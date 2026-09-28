@@ -22,6 +22,65 @@
   --red:#ff4d5e;
   --pixel:'Press Start 2P','Noto Sans SC',monospace;
 }
+
+/* ===== 游戏库 ===== */
+.gb-section { padding:48px 5vw; }
+.gb-head { display:flex; align-items:baseline; gap:12px; flex-wrap:wrap; margin-bottom:24px; }
+.gb-slash { color:var(--amber); font-weight:800; letter-spacing:-2px; }
+.gb-head h2 { color:var(--ink); font-size:28px; margin:0; }
+.gb-head p  { color:var(--ink-dim); margin:0; font-size:14px; }
+
+.gb-grid {
+  display:grid;
+  grid-template-columns:repeat(auto-fill, minmax(240px, 1fr));
+  gap:24px;
+}
+
+.gb-card {
+  display:block; text-decoration:none;
+  border-radius:14px; overflow:hidden;
+  background:var(--bg2);
+  transition:transform .25s ease, box-shadow .25s ease;
+}
+.gb-card:hover, .gb-card:focus-visible {
+  transform:translateY(-6px);
+  box-shadow:0 14px 32px rgba(0,0,0,.45), 0 0 0 2px color-mix(in srgb, var(--amber) 55%, transparent);
+}
+.gb-card:focus-visible { outline:none; }
+
+.gb-cover {
+  position:relative; height:130px;
+  background:linear-gradient(135deg, var(--c1), var(--c2));
+  display:flex; align-items:center; justify-content:center;
+}
+.gb-icon { font-size:52px; filter:drop-shadow(2px 3px 0 rgba(0,0,0,.35)); }
+.gb-badge {
+  position:absolute; top:10px; left:10px;
+  font-size:11px; font-weight:800; color:#fff;
+  padding:3px 8px; border-radius:6px;
+}
+.gb-new { background:var(--cyan); }
+.gb-hot { background:var(--red); }
+
+.gb-info { padding:12px 14px 14px; }
+.gb-info h3 { color:var(--ink); font-size:16px; margin:0 0 6px; }
+.gb-meta {
+  display:flex; justify-content:space-between; align-items:center;
+  color:var(--ink-dim); font-size:12px; margin-bottom:10px;
+}
+.gb-meta b { color:var(--amber); font-size:15px; }
+.gb-bar { height:5px; border-radius:99px; background:var(--panel); overflow:hidden; }
+.gb-bar i {
+  display:block; height:100%; border-radius:99px;
+  background:linear-gradient(90deg, var(--c1), var(--c2));
+}
+
+@media (max-width:480px){
+  .gb-grid { grid-template-columns:repeat(2, 1fr); gap:14px; }
+  .gb-cover { height:100px; }
+  .gb-icon { font-size:40px; }
+}
+
 *{margin:0;padding:0;box-sizing:border-box}
 html{scroll-behavior:smooth}
 body{
@@ -421,66 +480,91 @@ footer{border-top:3px solid var(--line);background:#0d111a;padding:44px 0 30px;m
   </div>
 </section>
 
-<!-- ================= 游戏库 ================= -->
-<section id="games">
-  <div class="wrap">
-    <div class="sec-head">
-      <h2>游戏库</h2>
-      <p>同一套复古街机审美，六款风格演示位（本页仅《星尘快跑》为可玩成品）。</p>
-    </div>
-    <div class="games">
-      <div class="gcard" onclick="document.getElementById('play').scrollIntoView()">
-        <div class="thumb t3"><div class="tag new">NEW</div><div class="art">&#11088;</div></div>
-        <div class="meta">
-          <h4>星尘快跑</h4>
-          <div class="sub"><span>街机 · 反应</span><span class="rate">9.4</span></div>
-          <div class="bar"><i style="width:94%"></i></div>
-        </div>
+<!-- ============ 游戏库 ============ -->
+<section class="gb-section">
+  <div class="gb-head">
+    <span class="gb-slash">//</span>
+    <h2>游戏库</h2>
+    <p>同一套复古街机审美，八款游戏合集。</p>
+  </div>
+
+  <div class="gb-grid">
+
+    <a class="gb-card" href="1.html" style="--c1:#f97316;--c2:#fbbf24">
+      <div class="gb-cover"><span class="gb-badge gb-new">NEW</span><span class="gb-icon">⭐</span></div>
+      <div class="gb-info">
+        <h3>星尘快跑</h3>
+        <div class="gb-meta"><span>街机 · 反应</span><b>9.4</b></div>
+        <div class="gb-bar"><i style="width:94%"></i></div>
       </div>
-      <div class="gcard">
-        <div class="thumb t1"><div class="tag">HOT</div><div class="art">&#127922;</div></div>
-        <div class="meta">
-          <h4>霓虹弹球</h4>
-          <div class="sub"><span>弹幕 · 休闲</span><span class="rate">8.8</span></div>
-          <div class="bar"><i style="width:88%"></i></div>
-        </div>
+    </a>
+
+    <a class="gb-card" href="2.html" style="--c1:#7b2ff7;--c2:#f107a3">
+      <div class="gb-cover"><span class="gb-badge gb-hot">HOT</span><span class="gb-icon">🎲</span></div>
+      <div class="gb-info">
+        <h3>霓虹弹球</h3>
+        <div class="gb-meta"><span>弹幕 · 休闲</span><b>8.8</b></div>
+        <div class="gb-bar"><i style="width:88%"></i></div>
       </div>
-      <div class="gcard">
-        <div class="thumb t2"><div class="art">&#128031;</div></div>
-        <div class="meta">
-          <h4>像素深海</h4>
-          <div class="sub"><span>探险 · 解谜</span><span class="rate">8.2</span></div>
-          <div class="bar"><i style="width:82%"></i></div>
-        </div>
+    </a>
+
+    <a class="gb-card" href="3.html" style="--c1:#0891b2;--c2:#22d3ee">
+      <div class="gb-cover"><span class="gb-icon">🐟</span></div>
+      <div class="gb-info">
+        <h3>像素深海</h3>
+        <div class="gb-meta"><span>探索 · 解谜</span><b>8.2</b></div>
+        <div class="gb-bar"><i style="width:82%"></i></div>
       </div>
-      <div class="gcard">
-        <div class="thumb t4"><div class="art">&#127807;</div></div>
-        <div class="meta">
-          <h4>方块农场</h4>
-          <div class="sub"><span>模拟 · 放置</span><span class="rate">7.9</span></div>
-          <div class="bar"><i style="width:79%"></i></div>
-        </div>
+    </a>
+
+    <a class="gb-card" href="4.html" style="--c1:#16a34a;--c2:#84cc16">
+      <div class="gb-cover"><span class="gb-icon">🌿</span></div>
+      <div class="gb-info">
+        <h3>方块农场</h3>
+        <div class="gb-meta"><span>模拟 · 放置</span><b>7.9</b></div>
+        <div class="gb-bar"><i style="width:79%"></i></div>
       </div>
-      <div class="gcard">
-        <div class="thumb t5"><div class="tag">HOT</div><div class="art">&#128640;</div></div>
-        <div class="meta">
-          <h4>星际塔防</h4>
-          <div class="sub"><span>策略 · 塔防</span><span class="rate">9.1</span></div>
-          <div class="bar"><i style="width:91%"></i></div>
-        </div>
+    </a>
+
+    <a class="gb-card" href="5.html" style="--c1:#4f46e5;--c2:#0ea5e9">
+      <div class="gb-cover"><span class="gb-badge gb-hot">HOT</span><span class="gb-icon">🚀</span></div>
+      <div class="gb-info">
+        <h3>星际塔防</h3>
+        <div class="gb-meta"><span>策略 · 塔防</span><b>9.1</b></div>
+        <div class="gb-bar"><i style="width:91%"></i></div>
       </div>
-      <div class="gcard">
-        <div class="thumb t6"><div class="art">&#9876;&#65039;</div></div>
-        <div class="meta">
-          <h4>熔岩跑酷</h4>
-          <div class="sub"><span>跑酷 · 极限</span><span class="rate">8.5</span></div>
-          <div class="bar"><i style="width:85%"></i></div>
-        </div>
+    </a>
+
+    <a class="gb-card" href="6.html" style="--c1:#dc2626;--c2:#f97316">
+      <div class="gb-cover"><span class="gb-icon">⚔️</span></div>
+      <div class="gb-info">
+        <h3>熔岩跑酷</h3>
+        <div class="gb-meta"><span>跑酷 · 极限</span><b>8.5</b></div>
+        <div class="gb-bar"><i style="width:85%"></i></div>
       </div>
-    </div>
+    </a>
+
+    <!-- 新增项目 -->
+    <a class="gb-card" href="7.html" style="--c1:#92400e;--c2:#fbbf24">
+      <div class="gb-cover"><span class="gb-badge gb-new">NEW</span><span class="gb-icon">🏰</span></div>
+      <div class="gb-info">
+        <h3>战争进化史</h3>
+        <div class="gb-meta"><span>策略 · 进化</span><b>9.2</b></div>
+        <div class="gb-bar"><i style="width:92%"></i></div>
+      </div>
+    </a>
+
+    <a class="gb-card" href="8.html" style="--c1:#0ea5e9;--c2:#6366f1">
+      <div class="gb-cover"><span class="gb-icon">🥊</span></div>
+      <div class="gb-info">
+        <h3>疯狂小人大战</h3>
+        <div class="gb-meta"><span>格斗 · 对战</span><b>8.7</b></div>
+        <div class="gb-bar"><i style="width:87%"></i></div>
+      </div>
+    </a>
+
   </div>
 </section>
-
 <!-- ================= 数据 ================= -->
 <section style="padding-top:0">
   <div class="wrap">
