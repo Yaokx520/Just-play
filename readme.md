@@ -1,9 +1,12 @@
 <div align="center">
 Just-play
+</div>
 <div align="center">
 ⚡ Flash games are dead. Long live the flash game.⚡
+</div>
 <div align="center">
    一个致敬 Flash 小游戏黄金时代的 HTML5 游戏合集
+   </div>
    
 # ⚡ 星尘快跑 Stardust Rush
 
@@ -17,8 +20,6 @@ Just-play
 ![Dependencies](https://img.shields.io/badge/Dependencies-0-28c840?style=flat-square)
 
 [中文](#-中文) | [English](#-english)
-
-</div>
 
 ---
 
@@ -68,7 +69,7 @@ and open-standards based (Canvas 2D + Web Audio API).
 ### 玩法（无需安装）
 
 **中文** 下载本仓库，直接用浏览器打开 `index.html` 即可开始游戏。
-**eng** Clone or download this repository and open `index.html` in your browser. That's it.
+**English**  Clone or download this repository and open `index.html` in your browser. That's it.
 **点击即玩 Click to play** https://yaokx520.github.io/Just-flash/
 
 ### 操作说明 / Controls
