@@ -6,1620 +6,1708 @@
 <title>方块农场 Block Farm</title>
 <style>
   html,body{margin:0;padding:0;width:100%;height:100%;background:#07090f;overflow:hidden;}
-  body{
-    display:flex;align-items:center;justify-content:center;
-    -webkit-user-select:none;user-select:none;
-    -webkit-tap-highlight-color:transparent;
-    touch-action:none;overscroll-behavior:none;
-  }
-  canvas{display:block;width:100%;height:100%;touch-action:none;}
+  canvas{display:block;width:100vw;height:100vh;touch-action:none;-webkit-tap-highlight-color:transparent;}
+  *{-webkit-user-select:none;user-select:none;}
 </style>
 </head>
 <body>
 <canvas id="game"></canvas>
 <script>
-(function(){
 'use strict';
+/* =========================================================================
+   模块 0 / 工具函数
+   ========================================================================= */
+var TAU = Math.PI * 2;
+function num(v, d){ return (typeof v === 'number' && isFinite(v)) ? v : (d === undefined ? 0 : d); }
+function clamp(v, a, b){ v = num(v, a); return v < a ? a : (v > b ? b : v); }
+function fract(v){ v = num(v); return v - Math.floor(v); }
+function hash1(n){ return fract(Math.sin(num(n) * 127.1) * 43758.5453); }
+function lerp(a, b, t){ a = num(a); b = num(b); return a + (b - a) * clamp(t, 0, 1); }
+function fmtInt(n){
+  n = Math.floor(num(n));
+  var neg = n < 0 ? '-' : ''; var s = String(Math.abs(n)); var o = '';
+  for (var i = 0; i < s.length; i++){ o += s.charAt(i); var rem = s.length - 1 - i; if (rem > 0 && rem % 3 === 0) o += ','; }
+  return neg + o;
+}
+function fmtNum(n){
+  n = num(n);
+  if (n >= 1e6) return (n / 1e6).toFixed(2) + 'M';
+  if (n >= 1e5) return Math.round(n / 1e3) + 'k';
+  return fmtInt(n);
+}
+function fmtTime(sec){
+  sec = Math.max(0, Math.floor(num(sec)));
+  var h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60), s = sec % 60;
+  if (h > 0) return h + '时' + m + '分';
+  if (m > 0) return m + '分' + s + '秒';
+  return s + '秒';
+}
+function qpt(ax, ay, bx, by, cx, cy, p){
+  p = clamp(p, 0, 1); var q = 1 - p;
+  return { x: q * q * ax + 2 * q * p * bx + p * p * cx, y: q * q * ay + 2 * q * p * by + p * p * cy };
+}
+function alpha(hex, a){
+  var h = String(hex || '#ffffff').replace('#', '');
+  if (h.length === 3) h = h.charAt(0) + h.charAt(0) + h.charAt(1) + h.charAt(1) + h.charAt(2) + h.charAt(2);
+  var r = parseInt(h.slice(0, 2), 16), g = parseInt(h.slice(2, 4), 16), b = parseInt(h.slice(4, 6), 16);
+  if (!isFinite(r)) r = 255; if (!isFinite(g)) g = 255; if (!isFinite(b)) b = 255;
+  return 'rgba(' + r + ',' + g + ',' + b + ',' + clamp(num(a, 1), 0, 1) + ')';
+}
 
-/* =========================================================
-   0. 基础工具
-   ========================================================= */
-const canvas = document.getElementById('game');
-const ctx = canvas.getContext('2d');
-let W = 0, H = 0, DPR = 1;
-
-const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
-const lerp  = (a,b,t)=>a+(b-a)*t;
-const rnd   = (a,b)=>a+Math.random()*(b-a);
-const ri    = (a,b)=>Math.floor(rnd(a,b+1));
-const pick  = (arr)=>arr[Math.floor(Math.random()*arr.length)];
-
-const CO = {
-  bg:'#07090f', surf:'#12141c', surf2:'#1a2130', edge:'#233047', edge2:'#2c3542',
-  ink:'#eaf6e4', dim:'#7f9a8c', gold:'#ffd23f', green:'#35e06b', lime:'#b8ff34',
-  cyan:'#43d9ff', violet:'#c56bff', red:'#ff5d5d', brown:'#7a4d2b'
+/* =========================================================================
+   模块 1 / 配置数据
+   ========================================================================= */
+var C = {
+  bg: '#07090f', panel: '#0b1120', panel2: '#0e1a2b', line: '#233047', lineSoft: '#18243a',
+  soil: '#14223a', gold: '#ffd23f', cyan: '#43d9ff', purple: '#c56bff', green: '#35e06b',
+  lime: '#b8ff34', pink: '#ff6bd6', text: '#eaf6e4', dim: '#7f9a8c', danger: '#ff5b6e'
 };
-
-/* =========================================================
-   1. 配置表（数值驱动）
-   ========================================================= */
-const CROPS = [
-  { id:'radish',     name:'萝卜',     cost:5,   grow:6,  sell:12,  unlock:0,    body:'#ff8fb1', leaf:'#35e06b', glow:'rgba(255,143,177,.75)' },
-  { id:'pumpkin',    name:'南瓜',     cost:18,  grow:16, sell:42,  unlock:120,  body:'#ff9f43', leaf:'#35e06b', glow:'rgba(255,159,67,.75)' },
-  { id:'strawberry', name:'草莓',     cost:45,  grow:32, sell:110, unlock:500,  body:'#ff4d6d', leaf:'#35e06b', glow:'rgba(255,77,109,.8)'  },
-  { id:'melon',      name:'金色西瓜', cost:120, grow:65, sell:320, unlock:1500, body:'#c9e86a', leaf:'#35e06b', glow:'rgba(255,210,63,.9)'  }
+var CATS = [
+  { name: '主粮类 GRAIN', short: '主粮', color: C.gold,  note: '生长 +8% · 收益 +8%',   grow: 1.08, price: 1.08, pest: 1.00 },
+  { name: '蔬菜类 VEG',   short: '蔬菜', color: C.green, note: '均衡稳健 · 无加成',     grow: 1.00, price: 1.00, pest: 1.00 },
+  { name: '瓜果类 MELON', short: '瓜果', color: C.cyan,  note: '害虫概率 -35%',          grow: 1.00, price: 1.00, pest: 0.65 },
+  { name: '水果类 FRUIT', short: '水果', color: C.pink,  note: '售价 +18% · 生长 -8%',   grow: 0.92, price: 1.18, pest: 1.00 }
 ];
+var CROPS = [
+  { name: '小麦',   cat: 0, cost: 4,   time: 5,  price: 10,  unlock: 0,     col: '#ffd23f' },
+  { name: '玉米',   cat: 0, cost: 16,  time: 14, price: 40,  unlock: 120,   col: '#ffdf5c' },
+  { name: '稻米',   cat: 0, cost: 70,  time: 38, price: 185, unlock: 1600,  col: '#e9c46a' },
+  { name: '萝卜',   cat: 1, cost: 6,   time: 7,  price: 16,  unlock: 40,    col: '#d9a6ff' },
+  { name: '胡萝卜', cat: 1, cost: 26,  time: 20, price: 62,  unlock: 500,   col: '#ff9d3c' },
+  { name: '茄子',   cat: 1, cost: 110, time: 52, price: 310, unlock: 7500,  col: '#a86bff' },
+  { name: '南瓜',   cat: 2, cost: 20,  time: 18, price: 52,  unlock: 240,   col: '#ff9e2c' },
+  { name: '黄瓜',   cat: 2, cost: 72,  time: 34, price: 200, unlock: 2800,  col: '#5fd77a' },
+  { name: '西瓜',   cat: 2, cost: 190, time: 70, price: 580, unlock: 12000, col: '#3fbf62' },
+  { name: '草莓',   cat: 3, cost: 48,  time: 28, price: 140, unlock: 900,   col: '#ff5b7a' },
+  { name: '苹果',   cat: 3, cost: 140, time: 56, price: 420, unlock: 4600,  col: '#ff6b5b' },
+  { name: '葡萄',   cat: 3, cost: 320, time: 88, price: 950, unlock: 20000, col: '#c56bff' }
+];
+var FAC = [
+  { name: '洒水器', unit: '生长速度', vals: [1.35, 1.8, 2.5], prices: [80, 260, 720],   color: C.cyan },
+  { name: '风车',   unit: '全体售价', vals: [1.1, 1.2, 1.35], prices: [200, 600, 1500], color: C.lime },
+  { name: '稻草人', unit: '自动收获', vals: [4.5, 3.0, 1.8],  prices: [150, 450, 1100], color: C.gold },
+  { name: '蜂箱',   unit: '自动除虫', vals: [12, 8, 5],       prices: [100, 320, 820],  color: C.gold },
+  { name: '鱼塘',   unit: '定期收益', vals: [6, 14, 32],      prices: [120, 380, 900],  color: C.cyan, ivals: [6, 4.5, 3] }
+];
+var EXP_BASE = 40;
 
-const HELPERS = {
-  sprinkler:{ name:'洒水器', desc:'加速所有作物生长',
-    costs:[80,260,720], mult:[1,1.35,1.8,2.5],
-    effect:(l)=>'生长速度 ×'+[1,1.35,1.8,2.5][l].toFixed(2) },
-  scarecrow:{ name:'稻草人', desc:'自动收获成熟作物',
-    costs:[150,450,1100], interval:[0,4.5,3.0,1.8],
-    effect:(l)=> l===0 ? '尚未雇佣' : '每 '+HELPERS.scarecrow.interval[l].toFixed(1)+' 秒自动收获' }
-};
-
-const EXPAND_COST = [350, 900];   // 4→5, 5→6
-const OFFLINE_CAP = 8*3600;       // 8 小时
-
-/* =========================================================
-   2. 游戏状态 + 持久化
-   ========================================================= */
-const KEY = 'blockfarm_v1';
-
-function makePlot(){ return { crop:null, progress:0, stage:0, pest:false, phase:Math.random()*6.283 }; }
-function defaults(){
-  const plots = [];
-  for(let i=0;i<36;i++) plots.push(makePlot());
-  return {
-    coins:0, total:0, level:1, xp:0,
-    gridN:4, cropSel:0,
-    sprinkler:0, scarecrow:0,
-    plots, harvests:0, best:0,
-    muted:false, lastTs:Date.now()
-  };
-}
-const S = defaults();
-
-function save(){
-  S.lastTs = Date.now();
-  try{ localStorage.setItem(KEY, JSON.stringify(S)); }catch(e){}
-}
-function load(){
-  try{
-    const raw = localStorage.getItem(KEY);
-    if(!raw) return false;
-    const d = JSON.parse(raw);
-    if(!d || !d.plots || !d.plots.length) return false;
-    Object.assign(S, defaults(), d);
-    for(let i=0;i<36;i++){
-      const p = S.plots[i] || makePlot();
-      if(p.crop!==null && (p.crop<0 || p.crop>=CROPS.length)) p.crop = null;
-      p.phase = p.phase || Math.random()*6.283;
-      S.plots[i] = p;
-    }
-    S.gridN = clamp(S.gridN|0, 4, 6);
-    return true;
-  }catch(e){ return false; }
-}
-
-function offlineResult(){
-  const now = Date.now();
-  let secs = (now - (S.lastTs||now))/1000;
-  if(!(secs > 20)) return null;
-  const capped = Math.min(secs, OFFLINE_CAP);
-  const rate = (0.25 + S.scarecrow*0.55) * HELPERS.sprinkler.mult[S.sprinkler] * (1 + Math.min(2, S.total/8000));
-  const gain = Math.min(Math.floor(capped*rate), 2200 + Math.floor(S.total*0.4));
-  if(gain <= 0) return null;
-  return { secs:capped, gain };
-}
-
-/* =========================================================
-   3. 音频（Web Audio 合成）
-   ========================================================= */
-let AC = null, MASTER = null;
-function initAudio(){
-  if(AC) { if(AC.state==='suspended') AC.resume(); return; }
-  try{
-    AC = new (window.AudioContext||window.webkitAudioContext)();
-    MASTER = AC.createGain();
-    MASTER.gain.value = 0.22;
-    MASTER.connect(AC.destination);
-  }catch(e){ AC = null; }
-}
-function tone(freq, dur, type, vol, slideTo, delay){
-  if(!AC || S.muted) return;
-  const t = AC.currentTime + (delay||0);
-  const o = AC.createOscillator(), g = AC.createGain();
-  o.type = type || 'square';
-  o.frequency.setValueAtTime(freq, t);
-  if(slideTo) o.frequency.exponentialRampToValueAtTime(Math.max(20,slideTo), t+dur);
-  g.gain.setValueAtTime(0.0001, t);
-  g.gain.exponentialRampToValueAtTime(vol||0.28, t+0.012);
-  g.gain.exponentialRampToValueAtTime(0.0001, t+dur);
-  o.connect(g); g.connect(MASTER);
-  o.start(t); o.stop(t+dur+0.03);
-}
-const sfx = {
-  click(){ tone(520,0.05,'square',0.18); },
-  plant(){ tone(300,0.09,'triangle',0.22,520); tone(660,0.06,'square',0.12,null,0.05); },
-  harvest(){ tone(420,0.08,'square',0.22,760); tone(880,0.10,'triangle',0.18,1180,0.06); },
-  coin(){ tone(880,0.05,'square',0.16); tone(1320,0.06,'square',0.12,null,0.045); },
-  error(){ tone(190,0.14,'sawtooth',0.18,110); },
-  level(){ [523,659,784,1046].forEach((f,i)=>tone(f,0.16,'square',0.2,null,i*0.085)); },
-  upgrade(){ tone(360,0.12,'triangle',0.22,720); tone(720,0.12,'square',0.14,1080,0.09); },
-  event(){ tone(220,0.32,'sawtooth',0.12,520); },
-  pest(){ tone(680,0.07,'square',0.18,320); }
-};
-
-/* =========================================================
-   4. 特效系统
-   ========================================================= */
-let parts = [], floats = [], rings = [], toasts = [];
-let shakeMag = 0, shakeX = 0, shakeY = 0, flashA = 0, flashCol = CO.green;
-
-function shake(m){ shakeMag = Math.min(22, shakeMag + m); }
-function flash(col, a){ flashCol = col||CO.green; flashA = Math.max(flashA, a||0.22); }
-function toast(text, color){
-  toasts.push({ text, color:color||CO.ink, t:0, life:2.6 });
-  if(toasts.length>5) toasts.shift();
-}
-function floatText(x,y,text,color,size){
-  floats.push({ x, y, text, color:color||CO.gold, t:0, life:1.15, size:size||18, vy:-42 });
-}
-function ringFx(x,y,color,max){
-  rings.push({ x, y, t:0, life:0.55, color:color||CO.lime, max:max||70 });
-}
-function coinBurst(x,y,count,targetX,targetY){
-  for(let i=0;i<count;i++){
-    const a = rnd(-Math.PI*0.85, -Math.PI*0.15);
-    const sp = rnd(180,420);
-    parts.push({
-      type:'coin', x, y, vx:Math.cos(a)*sp, vy:Math.sin(a)*sp,
-      life:rnd(0.8,1.25), max:1.25, r:rnd(3.2,6.4),
-      ground:y+rnd(30,90), tx:targetX, ty:targetY, phase2:0
-    });
-  }
-  for(let i=0;i<8;i++){
-    parts.push({
-      type:'spark', x, y, vx:rnd(-190,190), vy:rnd(-220,60),
-      life:rnd(0.35,0.7), max:0.7, r:rnd(1.6,3.4), color:pick([CO.gold,CO.lime,CO.green])
-    });
-  }
-}
-function updateFx(dt){
-  shakeMag *= Math.pow(0.0016, dt);
-  if(shakeMag<0.25) shakeMag = 0;
-  shakeX = rnd(-1,1)*shakeMag;
-  shakeY = rnd(-1,1)*shakeMag;
-  flashA = Math.max(0, flashA - dt*1.5);
-
-  for(let i=parts.length-1;i>=0;i--){
-    const p = parts[i];
-    p.life -= dt;
-    if(p.life<=0){ parts.splice(i,1); continue; }
-    if(p.type==='coin'){
-      if(p.phase2===0){
-        p.vy += 980*dt;
-        p.x += p.vx*dt; p.y += p.vy*dt;
-        if(p.y > p.ground){ p.y = p.ground; p.vy *= -0.38; p.vx *= 0.72; }
-        if(p.life < 0.55){ p.phase2 = 1; }
-      }else{
-        const k = 1-Math.pow(0.0008, dt);
-        p.x = lerp(p.x, p.tx, k); p.y = lerp(p.y, p.ty, k);
-        p.vx *= 0.9; p.vy *= 0.9;
-      }
-    }else{
-      p.vy += (p.g||520)*dt;
-      p.x += p.vx*dt; p.y += p.vy*dt;
-    }
-  }
-  if(parts.length>320) parts.splice(0, parts.length-320);
-
-  for(let i=rings.length-1;i>=0;i--){
-    const r = rings[i]; r.t += dt;
-    if(r.t>=r.life) rings.splice(i,1);
-  }
-  for(let i=floats.length-1;i>=0;i--){
-    const f = floats[i]; f.t += dt;
-    if(f.t>=f.life) floats.splice(i,1);
-  }
-  for(let i=toasts.length-1;i>=0;i--){
-    const t = toasts[i]; t.t += dt;
-    if(t.t>=t.life) toasts.splice(i,1);
-  }
-}
-
-/* =========================================================
-   5. 布局
-   ========================================================= */
-const L = {};
-function layout(){
-  const mobile = (W < 900) || (H > W*1.05);
-  L.mobile = mobile;
-  if(!mobile){
-    L.topH = 92;
-    L.botH = 56;
-    L.railW = clamp(W*0.19, 216, 292);
-    const availH = H - L.topH - L.botH - 28;
-    const availW = W - 2*(L.railW + 26);
-    const side = Math.floor(Math.min(availW, availH));
-    L.side = side;
-    L.cell = side/6;
-    L.gx = Math.floor((W - side)/2);
-    L.gy = Math.floor(L.topH + 16 + (availH - side)/2);
-    L.leftX = 18; L.rightX = W - L.railW - 18;
-    L.railY = L.topH + 12;
-    L.railH = H - L.topH - L.botH - 26;
-  }else{
-    L.topH = 96;
-    L.botH = clamp(H*0.36, 236, 320);
-    const availH = H - L.topH - L.botH - 10;
-    const side = Math.floor(Math.min(W - 20, availH));
-    L.side = side;
-    L.cell = side/6;
-    L.gx = Math.floor((W - side)/2);
-    L.gy = Math.floor(L.topH + 6);
-    L.leftX = 10; L.rightX = 10;
-    L.railY = L.gy + side + 10;
-    L.railH = H - L.railY - 8;
-  }
-}
-
-function buildScan(){
-  const c = document.createElement('canvas');
-  c.width = 1; c.height = 3;
-  const g = c.getContext('2d');
-  g.fillStyle = 'rgba(0,0,0,0.30)';
-  g.fillRect(0,2,1,1);
-  scanPat = ctx.createPattern(c,'repeat');
-
-  vignette = ctx.createRadialGradient(W/2,H*0.45,Math.min(W,H)*0.18, W/2,H*0.5,Math.max(W,H)*0.78);
-  vignette.addColorStop(0,'rgba(0,0,0,0)');
-  vignette.addColorStop(1,'rgba(0,0,0,0.55)');
-}
-let scanPat = null, vignette = null;
-
+/* =========================================================================
+   模块 2 / 画布与视图
+   ========================================================================= */
+var canvas = document.getElementById('game');
+var ctx = canvas.getContext('2d');
+var view = { w: 960, h: 640, dpr: 1 };
+var lay = {};
 function resize(){
-  DPR = Math.min(2, window.devicePixelRatio || 1);
-  W = window.innerWidth; H = window.innerHeight;
-  canvas.width = Math.floor(W*DPR);
-  canvas.height = Math.floor(H*DPR);
-  canvas.style.width = W+'px';
-  canvas.style.height = H+'px';
-  ctx.setTransform(DPR,0,0,DPR,0,0);
-  layout(); buildScan();
+  var w = window.innerWidth || document.documentElement.clientWidth || 960;
+  var h = window.innerHeight || document.documentElement.clientHeight || 640;
+  w = Math.max(240, num(w, 960)); h = Math.max(240, num(h, 640));
+  var dpr = clamp(window.devicePixelRatio || 1, 1, 3);
+  view.w = w; view.h = h; view.dpr = dpr;
+  canvas.width = Math.max(1, Math.round(w * dpr));
+  canvas.height = Math.max(1, Math.round(h * dpr));
+  canvas.style.width = w + 'px'; canvas.style.height = h + 'px';
+  computeLayout();
 }
 window.addEventListener('resize', resize);
-window.addEventListener('orientationchange', ()=>setTimeout(resize,120));
+window.addEventListener('orientationchange', function(){ setTimeout(resize, 150); });
 
-/* =========================================================
-   6. 绘图辅助
-   ========================================================= */
-function txt(str,x,y,size,color,align,shadow,outline){
-  ctx.font = 'bold '+size+'px "Courier New","Microsoft YaHei",monospace';
-  ctx.textAlign = align||'left';
+function fnt(size, weight, mono){
+  var s = Math.max(8, Math.round(num(size, 12)));
+  return (weight || 600) + ' ' + s + 'px ' + (mono
+    ? '"SFMono-Regular",Consolas,"Courier New",monospace'
+    : '"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",system-ui,sans-serif');
+}
+function text(str, x, y, size, color, align, weight, mono, spacing){
+  if (str === undefined || str === null) return;
+  x = num(x); y = num(y);
+  if (!isFinite(x) || !isFinite(y)) return;
+  ctx.font = fnt(size, weight, mono);
+  ctx.fillStyle = color || C.text;
+  ctx.textAlign = align || 'left';
   ctx.textBaseline = 'middle';
-  if(shadow!==false){
-    ctx.lineWidth = Math.max(2, size*0.17);
-    ctx.lineJoin = 'round';
-    ctx.strokeStyle = outline||'#05070c';
-    ctx.strokeText(str,x,y);
-  }
-  ctx.fillStyle = color||CO.ink;
-  ctx.fillText(str,x,y);
+  if (spacing && ctx.letterSpacing !== undefined) ctx.letterSpacing = spacing + 'px';
+  ctx.fillText(String(str), x, y);
+  if (spacing && ctx.letterSpacing !== undefined) ctx.letterSpacing = '0px';
 }
-function fitSize(str, boxW, boxH, maxSize){
-  const n = Math.max(1, String(str).length);
-  return clamp(Math.min(maxSize||20, boxH*0.42, boxW/(n*0.92)), 10, maxSize||20);
+function line(x1, y1, x2, y2, col, w){
+  if (!isFinite(x1) || !isFinite(y1) || !isFinite(x2) || !isFinite(y2)) return;
+  ctx.strokeStyle = col || C.line; ctx.lineWidth = Math.max(0.6, num(w, 1));
+  ctx.beginPath(); ctx.moveTo(num(x1), num(y1)); ctx.lineTo(num(x2), num(y2)); ctx.stroke();
 }
-function chamfer(x,y,w,h,c){
-  c = c||8;
+function ell(cx, cy, rx, ry, rot, fill, stroke, lw){
+  if (!isFinite(cx) || !isFinite(cy)) return;
+  rx = Math.max(0.4, num(rx, 1)); ry = Math.max(0.4, num(ry, 1));
+  ctx.save(); ctx.translate(num(cx), num(cy)); ctx.rotate(num(rot));
+  ctx.beginPath(); ctx.ellipse(0, 0, rx, ry, 0, 0, TAU);
+  if (fill){ ctx.fillStyle = fill; ctx.fill(); }
+  if (stroke){ ctx.strokeStyle = stroke; ctx.lineWidth = Math.max(0.5, num(lw, 1)); ctx.stroke(); }
+  ctx.restore();
+}
+function poly(pts, fill, stroke, lw){
+  if (!pts || pts.length < 2) return;
   ctx.beginPath();
-  ctx.moveTo(x+c,y);
-  ctx.lineTo(x+w-c,y); ctx.lineTo(x+w,y+c);
-  ctx.lineTo(x+w,y+h-c); ctx.lineTo(x+w-c,y+h);
-  ctx.lineTo(x+c,y+h); ctx.lineTo(x,y+h-c);
-  ctx.lineTo(x,y+c);
+  for (var i = 0; i < pts.length; i++){
+    var p = pts[i]; if (!p || !isFinite(p[0]) || !isFinite(p[1])) return;
+    if (i === 0) ctx.moveTo(num(p[0]), num(p[1])); else ctx.lineTo(num(p[0]), num(p[1]));
+  }
   ctx.closePath();
+  if (fill){ ctx.fillStyle = fill; ctx.fill(); }
+  if (stroke){ ctx.strokeStyle = stroke; ctx.lineWidth = Math.max(0.5, num(lw, 1)); ctx.stroke(); }
 }
-function panel(x,y,w,h,opt){
-  opt = opt||{};
-  ctx.save();
-  chamfer(x,y,w,h,opt.c||10);
-  ctx.fillStyle = opt.fill||'rgba(18,20,28,0.92)';
-  ctx.fill();
-  ctx.lineWidth = opt.lw||2;
-  ctx.strokeStyle = opt.stroke||CO.edge;
-  ctx.stroke();
-  if(opt.inner){
-    chamfer(x+4,y+4,w-8,h-8,Math.max(2,(opt.c||10)-3));
-    ctx.lineWidth = 1;
-    ctx.strokeStyle = opt.inner;
-    ctx.stroke();
-  }
-  ctx.restore();
+function curve(x0, y0, cx, cy, x1, y1, col, w){
+  if (!isFinite(x0) || !isFinite(y0) || !isFinite(x1) || !isFinite(y1)) return;
+  ctx.strokeStyle = col; ctx.lineWidth = Math.max(0.5, num(w, 1));
+  ctx.beginPath(); ctx.moveTo(num(x0), num(y0)); ctx.quadraticCurveTo(num(cx), num(cy), num(x1), num(y1)); ctx.stroke();
 }
-function button(x,y,w,h,label,id,opt){
-  opt = opt||{};
-  const active = opt.active;
-  const disabled = opt.disabled;
-  const hover = pointer.x>=x && pointer.x<=x+w && pointer.y>=y && pointer.y<=y+h;
-  ctx.save();
-  chamfer(x,y,w,h,7);
-  ctx.fillStyle = disabled ? 'rgba(28,34,44,0.75)'
-    : active ? (opt.fill||'rgba(53,224,107,0.20)')
-    : hover ? 'rgba(45,58,74,0.95)' : 'rgba(26,33,48,0.95)';
-  ctx.fill();
-  ctx.lineWidth = 2;
-  ctx.strokeStyle = disabled ? '#242c3a'
-    : active ? (opt.stroke||CO.lime) : (opt.stroke||CO.edge2);
-  ctx.stroke();
-  ctx.restore();
-  const size = fitSize(label, w-14, h, opt.size||17);
-  txt(label, x+w/2, y+h/2+1, size, disabled ? CO.dim : (opt.color||(active?CO.lime:CO.ink)), 'center');
-  if(id) uiRects.push({x,y,w,h,id});
-}
-
-/* =========================================================
-   7. 作物绘制（矢量贴纸）
-   ========================================================= */
-function drawCropIcon(id, stage, cx, cy, s, t, phase){
-  const bob = (stage===3) ? Math.sin(t*2.2 + phase)*s*0.055 : 0;
-  const sc = [0.26,0.54,0.8,1][clamp(stage,0,3)];
-  const r = s*sc;
-  cy += bob;
-
-  // 地面阴影
-  ctx.fillStyle = 'rgba(0,0,0,0.34)';
+function chamferPath(x, y, w, h, c){
+  x = num(x); y = num(y); w = Math.max(1, num(w, 1)); h = Math.max(1, num(h, 1));
+  c = clamp(num(c, 6), 0, Math.min(w, h) / 2);
   ctx.beginPath();
-  ctx.ellipse(cx, cy + s*0.44, r*0.62, r*0.15, 0, 0, Math.PI*2);
-  ctx.fill();
-
-  if(stage===0){
-    ctx.fillStyle = '#8a6b42';
-    for(let i=0;i<3;i++){
-      const a = i*2.1 + phase;
-      ctx.beginPath();
-      ctx.ellipse(cx + Math.cos(a)*r*0.7, cy + s*0.26 + Math.sin(a)*r*0.3, r*0.2, r*0.13, a, 0, Math.PI*2);
-      ctx.fill();
-    }
-    return;
-  }
-  if(stage===1){
-    ctx.strokeStyle = CO.green;
-    ctx.lineWidth = Math.max(2, r*0.2);
-    ctx.beginPath(); ctx.moveTo(cx, cy+s*0.36); ctx.lineTo(cx, cy-s*0.12); ctx.stroke();
-    ctx.fillStyle = CO.lime;
-    ctx.beginPath(); ctx.ellipse(cx-r*0.46, cy-s*0.08, r*0.46, r*0.22, -0.55, 0, Math.PI*2); ctx.fill();
-    ctx.beginPath(); ctx.ellipse(cx+r*0.46, cy-s*0.08, r*0.46, r*0.22, 0.55, 0, Math.PI*2); ctx.fill();
-    return;
-  }
-
-  const crop = CROPS[id];
-  const ripe = (stage===3);
-  ctx.save();
-  if(ripe){
-    ctx.shadowColor = crop.glow;
-    ctx.shadowBlur = 16;
-  }
-
-  if(id===0){ // 萝卜
-    ctx.fillStyle = crop.leaf;
-    for(const d of [-0.34,0,0.34]){
-      ctx.beginPath();
-      ctx.ellipse(cx + d*r*1.15, cy - r*0.78, r*0.32, r*0.16, d*1.5, 0, Math.PI*2);
-      ctx.fill();
-    }
-    ctx.fillStyle = crop.body;
-    ctx.beginPath();
-    ctx.moveTo(cx-r*0.6, cy-r*0.5); ctx.lineTo(cx+r*0.6, cy-r*0.5);
-    ctx.lineTo(cx, cy+r*0.9); ctx.closePath(); ctx.fill();
-    ctx.fillStyle = '#ffd6e2';
-    ctx.fillRect(cx-r*0.46, cy-r*0.42, r*0.92, r*0.16);
-    ctx.fillStyle = 'rgba(255,255,255,0.35)';
-    ctx.fillRect(cx-r*0.34, cy-r*0.2, r*0.2, r*0.42);
-  }else if(id===1){ // 南瓜
-    ctx.fillStyle = crop.body;
-    ctx.beginPath(); ctx.ellipse(cx, cy+r*0.05, r*0.88, r*0.72, 0, 0, Math.PI*2); ctx.fill();
-    ctx.fillStyle = '#e07b2c';
-    ctx.beginPath(); ctx.ellipse(cx-r*0.3, cy+r*0.05, r*0.16, r*0.66, 0, 0, Math.PI*2); ctx.fill();
-    ctx.beginPath(); ctx.ellipse(cx+r*0.3, cy+r*0.05, r*0.16, r*0.66, 0, 0, Math.PI*2); ctx.fill();
-    ctx.fillStyle = CO.brown;
-    ctx.fillRect(cx-r*0.12, cy-r*0.86, r*0.24, r*0.28);
-    ctx.fillStyle = crop.leaf;
-    ctx.beginPath(); ctx.ellipse(cx+r*0.28, cy-r*0.78, r*0.24, r*0.12, -0.4, 0, Math.PI*2); ctx.fill();
-    ctx.fillStyle = 'rgba(255,255,255,0.22)';
-    ctx.beginPath(); ctx.ellipse(cx-r*0.42, cy-r*0.22, r*0.14, r*0.26, -0.4, 0, Math.PI*2); ctx.fill();
-  }else if(id===2){ // 草莓
-    ctx.fillStyle = crop.body;
-    ctx.beginPath();
-    ctx.moveTo(cx, cy+r*0.92);
-    ctx.bezierCurveTo(cx-r*0.86, cy+r*0.34, cx-r*0.76, cy-r*0.72, cx, cy-r*0.58);
-    ctx.bezierCurveTo(cx+r*0.76, cy-r*0.72, cx+r*0.86, cy+r*0.34, cx, cy+r*0.92);
-    ctx.closePath(); ctx.fill();
-    ctx.fillStyle = crop.leaf;
-    for(const d of [-0.42,0,0.42]){
-      ctx.beginPath();
-      ctx.ellipse(cx+d*r*1.05, cy-r*0.72, r*0.34, r*0.16, d*1.2, 0, Math.PI*2);
-      ctx.fill();
-    }
-    ctx.fillStyle = '#ffe07a';
-    for(let i=0;i<6;i++){
-      const a = i*1.05 + phase;
-      ctx.beginPath();
-      ctx.ellipse(cx+Math.cos(a)*r*0.42, cy+Math.sin(a)*r*0.36+r*0.1, r*0.09, r*0.06, 0, 0, Math.PI*2);
-      ctx.fill();
-    }
-    ctx.fillStyle = 'rgba(255,255,255,0.3)';
-    ctx.beginPath(); ctx.ellipse(cx-r*0.3, cy-r*0.16, r*0.13, r*0.22, -0.5, 0, Math.PI*2); ctx.fill();
-  }else{ // 金色西瓜
-    const g = ctx.createRadialGradient(cx-r*0.3, cy-r*0.34, r*0.1, cx, cy, r*1.05);
-    g.addColorStop(0, '#eaffa0');
-    g.addColorStop(0.55, crop.body);
-    g.addColorStop(1, '#7fbf3c');
-    ctx.fillStyle = g;
-    ctx.beginPath(); ctx.arc(cx, cy+r*0.04, r*0.86, 0, Math.PI*2); ctx.fill();
-    ctx.strokeStyle = 'rgba(46,92,28,0.75)';
-    ctx.lineWidth = Math.max(1.6, r*0.1);
-    for(const d of [-0.52,-0.18,0.18,0.52]){
-      ctx.beginPath();
-      ctx.ellipse(cx + d*r*1.1, cy+r*0.04, r*0.12, r*0.78, 0, 0, Math.PI*2);
-      ctx.stroke();
-    }
-    ctx.fillStyle = 'rgba(255,255,255,0.42)';
-    ctx.beginPath(); ctx.ellipse(cx-r*0.36, cy-r*0.36, r*0.18, r*0.28, -0.6, 0, Math.PI*2); ctx.fill();
-    if(ripe){
-      ctx.fillStyle = CO.gold;
-      star(cx + r*0.62, cy - r*0.66, r*0.2, r*0.09, 5);
-    }
-  }
-  ctx.restore();
+  ctx.moveTo(x + c, y); ctx.lineTo(x + w - c, y); ctx.lineTo(x + w, y + c);
+  ctx.lineTo(x + w, y + h - c); ctx.lineTo(x + w - c, y + h); ctx.lineTo(x + c, y + h);
+  ctx.lineTo(x, y + h - c); ctx.lineTo(x, y + c); ctx.closePath();
 }
-function star(cx,cy,r1,r2,pts){
-  ctx.beginPath();
-  for(let i=0;i<pts*2;i++){
-    const a = -Math.PI/2 + i*Math.PI/pts;
-    const rr = (i%2===0)? r1 : r2;
-    ctx.lineTo(cx+Math.cos(a)*rr, cy+Math.sin(a)*rr);
-  }
-  ctx.closePath(); ctx.fill();
-}
-
-function drawPest(cx,cy,s,t){
-  const wob = Math.sin(t*7 + cx*0.1)*s*0.06;
-  ctx.save();
-  ctx.translate(cx, cy+wob);
-  ctx.fillStyle = '#2a1220';
-  ctx.beginPath(); ctx.ellipse(0,0,s*0.3,s*0.22,0,0,Math.PI*2); ctx.fill();
-  ctx.fillStyle = CO.red;
-  ctx.beginPath(); ctx.ellipse(0,-s*0.04,s*0.22,s*0.16,0,0,Math.PI*2); ctx.fill();
-  ctx.strokeStyle = CO.red; ctx.lineWidth = Math.max(1.4,s*0.06);
-  for(let i=-1;i<=1;i+=2){
-    ctx.beginPath(); ctx.moveTo(i*s*0.26,-s*0.06); ctx.lineTo(i*s*0.46,-s*0.3); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(i*s*0.2,s*0.1); ctx.lineTo(i*s*0.42,s*0.28); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(-s*0.1+i*s*0.16,-s*0.2); ctx.lineTo(-s*0.16+i*s*0.3,-s*0.42); ctx.stroke();
-  }
-  ctx.fillStyle = CO.gold;
-  ctx.beginPath(); ctx.arc(-s*0.08,-s*0.1,s*0.05,0,Math.PI*2); ctx.fill();
-  ctx.beginPath(); ctx.arc(s*0.08,-s*0.1,s*0.05,0,Math.PI*2); ctx.fill();
-  ctx.restore();
-}
-
-/* =========================================================
-   8. 游戏逻辑
-   ========================================================= */
-function cropUnlocked(i){ return S.total >= CROPS[i].unlock; }
-function isLocked(r,c){ return r >= S.gridN || c >= S.gridN; }
-function plotAt(px,py){
-  const c = Math.floor((px - L.gx)/L.cell);
-  const r = Math.floor((py - L.gy)/L.cell);
-  if(r<0||c<0||r>5||c>5) return null;
-  return r*6+c;
-}
-function cellCenter(idx){
-  const r = Math.floor(idx/6), c = idx%6;
-  return { x: L.gx + c*L.cell + L.cell/2, y: L.gy + r*L.cell + L.cell/2 };
-}
-
-function plant(idx){
-  const p = S.plots[idx];
-  const crop = CROPS[S.cropSel];
-  if(!cropUnlocked(S.cropSel)){
-    toast('未解锁：累计 '+crop.unlock+' 金币', CO.red); sfx.error(); return;
-  }
-  if(S.coins < crop.cost){
-    toast('金币不足，需要 '+crop.cost+' 金币', CO.red); sfx.error(); return;
-  }
-  S.coins -= crop.cost;
-  p.crop = S.cropSel; p.progress = 0; p.stage = 0; p.pest = false;
-  const c = cellCenter(idx);
-  ringFx(c.x, c.y, CO.cyan, L.cell*0.8);
-  floatText(c.x, c.y - L.cell*0.3, '播种 '+crop.name, CO.cyan, 15);
-  sfx.plant(); shake(2.2); save();
-}
-
-function harvest(idx, auto){
-  const p = S.plots[idx];
-  if(p.crop===null || p.stage<3) return false;
-  const crop = CROPS[p.crop];
-  let amount = crop.sell * (1 + (S.level-1)*0.03);
-  if(p.pest){ amount *= 0.5; p.pest = false; toast('害虫啃食，减产了', CO.red); }
-  amount = Math.max(1, Math.round(amount));
-
-  S.coins += amount;
-  S.total += amount;
-  S.harvests++;
-  if(S.total > S.best) S.best = S.total;
-  gainXp(Math.round(crop.sell*0.7));
-
-  const c = cellCenter(idx);
-  coinBurst(c.x, c.y - L.cell*0.15, auto?8:ri(13,18), L.mobile ? W*0.5 : L.leftX + 96, L.mobile ? 42 : L.railY + 58);
-  floatText(c.x, c.y - L.cell*0.42, (auto?'自动 ':'')+'+'+amount, CO.gold, auto?16:20);
-  ringFx(c.x, c.y, CO.gold, L.cell*1.1);
-  if(!auto){ sfx.harvest(); shake(4.5); flash(CO.gold, 0.12); }
-  else { sfx.coin(); }
-
-  p.crop = null; p.progress = 0; p.stage = 0;
-  save();
-  return true;
-}
-
-function xpNeed(l){ return Math.round(60 * Math.pow(1.42, l-1)); }
-function gainXp(n){
-  S.xp += n;
-  let ups = 0;
-  while(S.xp >= xpNeed(S.level)){
-    S.xp -= xpNeed(S.level);
-    S.level++;
-    ups++;
-  }
-  if(ups>0){
-    const bonus = 24 * S.level;
-    S.coins += bonus; S.total += bonus;
-    if(S.total > S.best) S.best = S.total;
-    toast('升级！达到 '+S.level+' 级，奖励 '+bonus+' 金币', CO.lime);
-    floatText(W/2, H*0.32, 'LEVEL UP', CO.lime, 30);
-    sfx.level(); shake(8); flash(CO.green, 0.28);
-    checkUnlocks();
-    save();
-  }
-}
-function checkUnlocks(){
-  CROPS.forEach((c,i)=>{
-    if(S.total >= c.unlock && S.total - 0 < c.unlock + 1) return;
-  });
-  for(let i=0;i<CROPS.length;i++){
-    const c = CROPS[i];
-    if(S.total >= c.unlock && !S['_u'+i]){
-      S['_u'+i] = 1;
-      if(c.unlock>0) toast('新作物解锁：'+c.name+'!', CO.violet);
-    }
-    if(S.total < c.unlock) S['_u'+i] = 0;
-  }
-}
-
-function clearPest(idx){
-  const p = S.plots[idx];
-  if(!p.pest) return false;
-  p.pest = false;
-  const c = cellCenter(idx);
-  for(let i=0;i<12;i++){
-    parts.push({
-      type:'spark', x:c.x, y:c.y, vx:rnd(-200,200), vy:rnd(-260,-40),
-      life:rnd(0.3,0.6), max:0.6, r:rnd(1.8,3.6), color:CO.red
-    });
-  }
-  floatText(c.x, c.y - L.cell*0.4, '清除害虫!', CO.green, 16);
-  ringFx(c.x, c.y, CO.green, L.cell*0.9);
-  sfx.pest(); shake(3);
-  return true;
-}
-
-function interact(idx){
-  const r = Math.floor(idx/6), c = idx%6;
-  if(isLocked(r,c)){
-    if(S.gridN>=6){ toast('农田已全部解锁', CO.dim); return; }
-    const cost = EXPAND_COST[S.gridN-4];
-    if(S.coins >= cost){
-      S.coins -= cost; S.gridN++;
-      toast('农田扩展到 '+S.gridN+'×'+S.gridN+'!', CO.lime);
-      sfx.upgrade(); shake(9); flash(CO.green,0.22); save();
-    }else{
-      toast('扩展需要 '+cost+' 金币', CO.red); sfx.error();
-    }
-    return;
-  }
-  const p = S.plots[idx];
-  if(p.pest){ clearPest(idx); return; }
-  if(p.crop===null){ plant(idx); return; }
-  if(p.stage>=3){ harvest(idx,false); return; }
-  const pct = Math.round(p.progress*100);
-  floatText(cellCenter(idx).x, cellCenter(idx).y - L.cell*0.35, '生长中 '+pct+'%', CO.cyan, 13);
-  sfx.click();
-}
-
-function buyHelper(key){
-  const H0 = HELPERS[key];
-  const lvl = S[key];
-  if(lvl >= 3){ toast(H0.name+' 已满级', CO.dim); return; }
-  const cost = H0.costs[lvl];
-  if(S.coins < cost){ toast('金币不足，需要 '+cost, CO.red); sfx.error(); return; }
-  S.coins -= cost;
-  S[key] = lvl+1;
-  toast(H0.name+' 升到 '+S[key]+' 级!', CO.cyan);
-  sfx.upgrade(); shake(5); flash(CO.cyan,0.18); save();
-}
-
-/* =========================================================
-   9. 随机事件
-   ========================================================= */
-const EV = {
-  cloudT: rnd(38,58),
-  cloudActive: 0,
-  pestT: rnd(26,44),
-  scareT: 0
-};
-function updateEvents(dt){
-  if(EV.cloudActive > 0){
-    EV.cloudActive -= dt;
-    if(EV.cloudActive <= 0){ toast('乌云散去', CO.dim); }
-  }else{
-    EV.cloudT -= dt;
-    if(EV.cloudT <= 0){
-      EV.cloudT = rnd(45,72);
-      EV.cloudActive = 18;
-      toast('乌云飘来！生长速度提升', CO.cyan);
-      sfx.event();
-    }
-  }
-  EV.pestT -= dt;
-  if(EV.pestT <= 0){
-    EV.pestT = rnd(34,58);
-    const candidates = [];
-    for(let i=0;i<36;i++){
-      const r = Math.floor(i/6), c = i%6;
-      if(isLocked(r,c)) continue;
-      const p = S.plots[i];
-      if(p.crop!==null && p.stage<3 && !p.pest) candidates.push(i);
-    }
-    if(candidates.length){
-      const idx = pick(candidates);
-      S.plots[idx].pest = true;
-      toast('害虫出现！点击清除', CO.red);
-      sfx.pest(); shake(2.5);
-    }
-  }
-  if(S.scarecrow > 0){
-    EV.scareT -= dt;
-    if(EV.scareT <= 0){
-      EV.scareT = HELPERS.scarecrow.interval[S.scarecrow];
-      const ripe = [];
-      for(let i=0;i<36;i++){
-        const r = Math.floor(i/6), c = i%6;
-        if(isLocked(r,c)) continue;
-        if(S.plots[i].crop!==null && S.plots[i].stage>=3) ripe.push(i);
-      }
-      if(ripe.length) harvest(pick(ripe), true);
-    }
-  }
-}
-
-/* =========================================================
-   10. 渲染
-   ========================================================= */
-let uiRects = [];
-const pointer = { x:-999, y:-999, down:false, sx:0, sy:0, drag:false, swipeX:0, swipeY:0 };
-
-function render(){
-  uiRects = [];
-  ctx.setTransform(DPR,0,0,DPR,0,0);
-  ctx.clearRect(0,0,W,H);
-
-  // 背景
-  const bg = ctx.createLinearGradient(0,0,0,H);
-  bg.addColorStop(0,'#080b12');
-  bg.addColorStop(0.55,'#07090f');
-  bg.addColorStop(1,'#05070c');
-  ctx.fillStyle = bg; ctx.fillRect(0,0,W,H);
-
-  drawBackgroundGrid();
-
-  if(S.screen==='boot'){ drawBoot(); drawOverlayFx(); return; }
-  if(S.screen==='title'){ drawTitle(); drawOverlayFx(); return; }
-
-  ctx.save();
-  ctx.translate(shakeX, shakeY);
-  drawStage();
-  drawParticles();
-  drawFloats();
-  ctx.restore();
-
-  if(L.mobile) drawMobileHUD(); else drawDesktopHUD();
-
-  drawToasts();
-  if(modal==='offline') drawOfflineModal();
-  if(modal==='pause') drawPauseModal();
-  if(modal==='reset') drawResetModal();
-  if(modal==='upgrade' && L.mobile) drawUpgradeModal();
-
-  drawOverlayFx();
-}
-
-function drawBackgroundGrid(){
-  ctx.save();
-  ctx.strokeStyle = 'rgba(53,224,107,0.045)';
-  ctx.lineWidth = 1;
-  const step = 46;
-  for(let x=0;x<W;x+=step){ ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,H); ctx.stroke(); }
-  for(let y=0;y<H;y+=step){ ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(W,y); ctx.stroke(); }
-  const g = ctx.createRadialGradient(W/2, H*0.55, 20, W/2, H*0.55, Math.max(W,H)*0.7);
-  g.addColorStop(0,'rgba(53,224,107,0.07)');
-  g.addColorStop(1,'rgba(53,224,107,0)');
-  ctx.fillStyle = g; ctx.fillRect(0,0,W,H);
-  ctx.restore();
-}
-
-function drawStage(){
-  const side = L.side;
-  // 舞台底板
-  ctx.save();
-  ctx.shadowColor = 'rgba(53,224,107,0.28)';
-  ctx.shadowBlur = 32;
-  panel(L.gx-16, L.gy-16, side+32, side+32, { fill:'#0c1219', stroke:CO.edge, inner:'rgba(53,224,107,0.16)', c:14 });
-  ctx.restore();
-
-  for(let r=0;r<6;r++){
-    for(let c=0;c<6;c++){
-      const idx = r*6+c;
-      const x = L.gx + c*L.cell, y = L.gy + r*L.cell;
-      drawTile(x, y, L.cell, idx, r, c);
-    }
-  }
-
-  // 乌云
-  if(EV.cloudActive > 0){
-    const a = clamp(Math.min(EV.cloudActive, 18-EV.cloudActive)*0.6, 0, 1);
-    ctx.save();
-    chamfer(L.gx-16, L.gy-16, side+32, side+32, 14);
-    ctx.clip();
-    ctx.fillStyle = 'rgba(40,64,110,'+(0.16*a)+')';
-    ctx.fillRect(L.gx-16, L.gy-16, side+32, side+32);
-    for(let i=0;i<5;i++){
-      const cx = L.gx + ((i*137 + S.time*26) % (side+220)) - 110;
-      const cy = L.gy + 40 + i*(side/5.4);
-      ctx.fillStyle = 'rgba(150,180,215,'+(0.10*a)+')';
-      ctx.beginPath();
-      ctx.ellipse(cx, cy, L.cell*1.15, L.cell*0.42, 0, 0, Math.PI*2);
-      ctx.ellipse(cx-L.cell*0.5, cy+L.cell*0.16, L.cell*0.7, L.cell*0.34, 0, 0, Math.PI*2);
-      ctx.fill();
-    }
-    ctx.restore();
-    txt('乌云 · 生长加速 ×1.8', L.gx + side/2, L.gy - 26, L.mobile?13:15, CO.cyan, 'center');
-  }
-}
-
-function drawTile(x,y,s,idx,r,c){
-  const locked = isLocked(r,c);
-  const p = S.plots[idx];
-  const pad = Math.max(3, s*0.055);
-  const tx = x+pad, ty = y+pad, tw = s-pad*2, th = s-pad*2;
-
-  if(locked){
-    ctx.fillStyle = 'rgba(14,18,26,0.85)';
-    ctx.fillRect(tx,ty,tw,th);
-    ctx.save();
-    ctx.beginPath(); ctx.rect(tx,ty,tw,th); ctx.clip();
-    ctx.strokeStyle = 'rgba(60,74,96,0.30)';
-    ctx.lineWidth = 1;
-    const gap = Math.max(7, s*0.14);
-    for(let d=-th; d<tw+th; d+=gap){
-      ctx.beginPath(); ctx.moveTo(tx+d, ty); ctx.lineTo(tx+d+th, ty+th); ctx.stroke();
-    }
-    ctx.restore();
-    ctx.strokeStyle = 'rgba(50,62,82,0.7)';
-    ctx.lineWidth = 1.5;
-    ctx.strokeRect(tx+0.5,ty+0.5,tw-1,th-1);
-    // 锁
-    const cx = tx+tw/2, cy = ty+th/2;
-    ctx.strokeStyle = CO.dim; ctx.lineWidth = Math.max(1.6, s*0.035);
-    ctx.beginPath(); ctx.arc(cx, cy - s*0.055, s*0.075, Math.PI, 0); ctx.stroke();
-    ctx.fillStyle = CO.dim;
-    ctx.fillRect(cx - s*0.1, cy - s*0.055, s*0.2, s*0.15);
-    return;
-  }
-
-  const worked = p.crop!==null;
-  const g = ctx.createLinearGradient(tx,ty,tx,ty+th);
-  g.addColorStop(0, worked ? '#1b2631' : '#141b25');
-  g.addColorStop(1, worked ? '#111a22' : '#0e141c');
-  ctx.fillStyle = g;
-  ctx.fillRect(tx,ty,tw,th);
-
-  ctx.strokeStyle = (p.stage>=3) ? 'rgba(255,210,63,0.55)' : 'rgba(35,48,71,0.95)';
-  ctx.lineWidth = 2;
-  ctx.strokeRect(tx+1,ty+1,tw-2,th-2);
-
-  ctx.strokeStyle = 'rgba(44,53,66,0.75)';
-  ctx.lineWidth = 1;
-  ctx.beginPath(); ctx.moveTo(tx+3,ty+th-3); ctx.lineTo(tx+tw-3,ty+th-3); ctx.stroke();
-
-  if(!worked){
-    ctx.strokeStyle = 'rgba(60,80,70,0.35)';
-    ctx.lineWidth = 1;
-    for(let i=1;i<4;i++){
-      ctx.beginPath();
-      ctx.moveTo(tx + tw*i/4, ty+4);
-      ctx.lineTo(tx + tw*i/4, ty+th-4);
-      ctx.stroke();
-    }
-    return;
-  }
-
-  // 作物
-  drawCropIcon(p.crop, p.stage, tx+tw/2, ty+th*0.52, s*0.42, S.time, p.phase);
-
-  // 生长进度条
-  if(p.stage < 3){
-    const bw = tw*0.72, bh = Math.max(3, s*0.05);
-    const bx = tx + (tw-bw)/2, by = ty + th - s*0.11;
-    ctx.fillStyle = 'rgba(0,0,0,0.5)';
-    ctx.fillRect(bx,by,bw,bh);
-    const pg = ctx.createLinearGradient(bx,0,bx+bw,0);
-    pg.addColorStop(0, CO.green); pg.addColorStop(1, CO.lime);
-    ctx.fillStyle = pg;
-    ctx.fillRect(bx,by,bw*clamp(p.progress,0,1),bh);
-  }else{
-    const bw = tw*0.72, bh = Math.max(3, s*0.05);
-    const bx = tx + (tw-bw)/2, by = ty + th - s*0.11;
-    ctx.fillStyle = 'rgba(255,210,63,0.22)';
-    ctx.fillRect(bx,by,bw,bh);
-  }
-
-  if(p.pest) drawPest(tx+tw*0.78, ty+th*0.24, s*0.2, S.time);
-}
-
-function drawParticles(){
-  for(const p of parts){
-    const a = clamp(p.life/p.max, 0, 1);
-    if(p.type==='coin'){
-      // 拖影
-      ctx.fillStyle = 'rgba(255,210,63,'+(a*0.22)+')';
-      ctx.beginPath(); ctx.arc(p.x - p.vx*0.012, p.y - p.vy*0.012, p.r*0.9, 0, Math.PI*2); ctx.fill();
-      ctx.fillStyle = 'rgba(255,210,63,'+a+')';
-      ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, Math.PI*2); ctx.fill();
-      ctx.strokeStyle = 'rgba(150,105,10,'+a+')';
-      ctx.lineWidth = Math.max(1, p.r*0.3);
-      ctx.beginPath(); ctx.arc(p.x, p.y, p.r*0.62, 0, Math.PI*2); ctx.stroke();
-    }else{
-      ctx.globalAlpha = a;
-      ctx.fillStyle = p.color;
-      ctx.fillRect(p.x-p.r, p.y-p.r, p.r*2, p.r*2);
-      ctx.globalAlpha = 1;
-    }
-  }
-  for(const r of rings){
-    const k = r.t/r.life;
-    ctx.strokeStyle = r.color;
-    ctx.globalAlpha = (1-k)*0.65;
-    ctx.lineWidth = 3*(1-k)+1;
-    ctx.beginPath();
-    ctx.arc(r.x, r.y, r.max*k, 0, Math.PI*2);
-    ctx.stroke();
-    ctx.globalAlpha = 1;
-  }
-}
-function drawFloats(){
-  for(const f of floats){
-    const k = f.t/f.life;
-    f.y += f.vy*0.016;
-    ctx.globalAlpha = 1-k*k;
-    txt(f.text, f.x, f.y, f.size, f.color, 'center');
-    ctx.globalAlpha = 1;
-  }
-}
-
-/* ---------- 顶部标题栏 ---------- */
-function drawTopBar(){
-  if(L.mobile){
-    ctx.fillStyle = 'rgba(10,14,20,0.9)';
-    ctx.fillRect(0,0,W,L.topH-6);
-    ctx.strokeStyle = CO.edge; ctx.lineWidth = 2;
-    ctx.beginPath(); ctx.moveTo(0,L.topH-6); ctx.lineTo(W,L.topH-6); ctx.stroke();
-
-    txt('方块农场', 14, 26, 21, CO.lime, 'left');
-    txt('BLOCK FARM', 14, 50, 10, CO.dim, 'left');
-
-    // 金币
-    drawCoinBadge(W-14-136, 12, 136, 36);
-    // 等级条
-    drawXpBar(14, 66, W-28, 18);
-  }else{
-    ctx.fillStyle = 'rgba(10,14,20,0.85)';
-    ctx.fillRect(0,0,W,L.topH-10);
-    ctx.strokeStyle = CO.edge; ctx.lineWidth = 2;
-    ctx.beginPath(); ctx.moveTo(0,L.topH-10); ctx.lineTo(W,L.topH-10); ctx.stroke();
-
-    txt('方块农场', 24, 36, 30, CO.lime, 'left');
-    txt('BLOCK FARM · 霓虹农场经营', 25, 66, 11, CO.dim, 'left');
-
-    drawCoinBadge(W-24-260, 20, 260, 52);
-    drawXpBar(W/2-190, 30, 380, 22);
-  }
-}
-function drawCoinBadge(x,y,w,h){
-  ctx.save();
-  ctx.shadowColor = 'rgba(255,210,63,0.35)';
-  ctx.shadowBlur = 18;
-  panel(x,y,w,h,{ fill:'rgba(30,26,14,0.92)', stroke:CO.gold, c:8 });
-  ctx.restore();
-  // 硬币图标
-  const cx = x + h*0.55, cy = y + h/2, r = h*0.27;
-  ctx.fillStyle = CO.gold;
-  ctx.beginPath(); ctx.arc(cx,cy,r,0,Math.PI*2); ctx.fill();
-  ctx.strokeStyle = '#a97c12'; ctx.lineWidth = 2;
-  ctx.beginPath(); ctx.arc(cx,cy,r*0.62,0,Math.PI*2); ctx.stroke();
-  txt('¥', cx, cy+1, r*1.25, '#7a5608', 'center', false);
-
-  const label = Math.floor(S.coins).toLocaleString('en-US');
-  const size = fitSize(label, w-h*1.1-14, h, L.mobile?22:30);
-  txt(label, x+w-12, y+h/2+1, size, CO.gold, 'right');
-}
-function drawXpBar(x,y,w,h){
-  const need = xpNeed(S.level);
-  const k = clamp(S.xp/need,0,1);
-  ctx.fillStyle = 'rgba(12,18,24,0.95)';
-  chamfer(x,y,w,h,6); ctx.fill();
-  ctx.strokeStyle = CO.edge; ctx.lineWidth = 1.5; ctx.stroke();
-
-  const g = ctx.createLinearGradient(x,0,x+w,0);
-  g.addColorStop(0, CO.green); g.addColorStop(0.6, CO.lime); g.addColorStop(1, CO.gold);
-  chamfer(x+2,y+2,(w-4)*k,h-4,4);
+function panelBox(x, y, w, h, accent, title, cut){
+  x = num(x); y = num(y); w = Math.max(1, num(w, 1)); h = Math.max(1, num(h, 1));
+  chamferPath(x, y, w, h, cut === undefined ? 8 : cut);
+  var g = ctx.createLinearGradient(x, y, x, y + h);
+  g.addColorStop(0, C.panel2); g.addColorStop(1, C.panel);
   ctx.fillStyle = g; ctx.fill();
-
-  txt('LV.'+S.level, x+10, y+h/2+1, Math.min(15,h*0.62), CO.ink, 'left');
-  txt(S.xp+' / '+need+' EXP', x+w-10, y+h/2+1, Math.min(13,h*0.54), CO.dim, 'right');
+  ctx.strokeStyle = C.line; ctx.lineWidth = 1; ctx.stroke();
+  if (accent){ chamferPath(x, y, 4, h, 2); ctx.fillStyle = accent; ctx.fill(); }
+  if (title) text(title, x + 14, y + 16, 11, C.dim, 'left', 700, false, 2);
 }
-
-/* ---------- 作物卡片 ---------- */
-function cropCard(i,x,y,w,h){
-  const c = CROPS[i];
-  const unlocked = cropUnlocked(i);
-  const sel = (S.cropSel===i);
+function drawStar(x, y, r, fill, a){
+  r = Math.max(1, num(r, 4));
+  ctx.save(); ctx.globalAlpha = clamp(num(a, 1), 0, 1);
+  ctx.beginPath();
+  for (var i = 0; i < 10; i++){
+    var ang = -Math.PI / 2 + i * Math.PI / 5;
+    var rr = (i % 2 === 0) ? r : r * 0.45;
+    var px2 = num(x) + Math.cos(ang) * rr, py2 = num(y) + Math.sin(ang) * rr;
+    if (i === 0) ctx.moveTo(px2, py2); else ctx.lineTo(px2, py2);
+  }
+  ctx.closePath(); ctx.fillStyle = fill; ctx.fill(); ctx.restore();
+}
+function drawCoinIcon(x, y, r){
+  r = Math.max(2, num(r, 8));
+  ell(x, y, r, r, 0, '#f0b429', '#8a6414', Math.max(0.8, r * 0.16));
+  ell(x - r * 0.22, y - r * 0.22, r * 0.42, r * 0.3, -0.6, 'rgba(255,255,255,0.45)');
+  ell(x, y, r * 0.52, r * 0.52, 0, null, '#8a6414', Math.max(0.6, r * 0.12));
+}
+/* ★ 挂锁（矢量）：锁梁 + 锁体 + 锁孔 + 光环 */
+function drawLock(x, y, s, col){
+  if (!isFinite(x) || !isFinite(y)) return;
+  var u = Math.max(0.4, num(s, 20) / 24);
+  var c = col || C.gold;
   ctx.save();
-  chamfer(x,y,w,h,7);
-  ctx.fillStyle = sel ? 'rgba(53,224,107,0.14)' : 'rgba(20,26,36,0.92)';
-  ctx.fill();
-  ctx.lineWidth = sel?2:1.5;
-  ctx.strokeStyle = sel ? CO.lime : (unlocked?CO.edge:'#1c2432');
+  /* 光环 */
+  ell(x, y, 13 * u, 13 * u, 0, null, alpha(c, 0.22), Math.max(0.8, 1.2 * u));
+  ell(x, y, 16 * u, 16 * u, 0, null, alpha(c, 0.10), Math.max(0.8, 1 * u));
+  /* 锁梁 */
+  ctx.strokeStyle = c; ctx.lineWidth = Math.max(1, 2.4 * u);
+  ctx.beginPath();
+  ctx.arc(x, y - 4 * u, 5.4 * u, Math.PI, 0);
   ctx.stroke();
+  /* 锁体 */
+  var bw = 18 * u, bh = 13.5 * u, bx = x - bw / 2, by = y - 3 * u;
+  chamferPath(bx, by, bw, bh, 2.2 * u);
+  ctx.fillStyle = c; ctx.fill();
+  ctx.strokeStyle = alpha('#08111c', 0.85); ctx.lineWidth = Math.max(0.8, 1.2 * u); ctx.stroke();
+  /* 高光 */
+  poly([[bx + 1.6 * u, by + 1.6 * u], [bx + bw * 0.55, by + 1.6 * u], [bx + 1.6 * u, by + bh * 0.5]], 'rgba(255,255,255,0.28)');
+  /* 锁孔 */
+  ell(x, by + bh * 0.38, 2.1 * u, 2.1 * u, 0, '#0b1420');
+  poly([[x - 1.3 * u, by + bh * 0.44], [x + 1.3 * u, by + bh * 0.44], [x + 2.3 * u, by + bh * 0.8], [x - 2.3 * u, by + bh * 0.8]], '#0b1420');
   ctx.restore();
-
-  const iconS = Math.min(w*0.24, h*0.42);
-  drawCropIcon(i, 3, x + w*0.17, y + h*0.5, iconS, S.time, i*1.7);
-
-  const tx = x + w*0.32;
-  txt(c.name, tx, y + h*0.28, Math.min(16, h*0.26), unlocked?CO.ink:CO.dim, 'left');
-  if(unlocked){
-    txt('成本 '+c.cost+'  ·  卖 '+c.sell, tx, y + h*0.58, Math.min(12, h*0.2), CO.dim, 'left');
-    txt(Math.round(c.grow/HELPERS.sprinkler.mult[S.sprinkler])+'秒成熟', tx, y + h*0.82, Math.min(11, h*0.18), 'rgba(69,224,140,0.9)', 'left');
-  }else{
-    const k = clamp(S.total/c.unlock, 0, 1);
-    const bw = w*0.62, bh = 5;
-    ctx.fillStyle = 'rgba(255,255,255,0.12)';
-    ctx.fillRect(tx, y+h*0.62, bw, bh);
-    ctx.fillStyle = CO.violet;
-    ctx.fillRect(tx, y+h*0.62, bw*k, bh);
-    txt('累计 '+c.unlock+' 金币解锁', tx, y+h*0.82, Math.min(11,h*0.18), CO.violet, 'left');
-  }
-  uiRects.push({x,y,w,h,id:'crop'+i});
 }
 
-/* ---------- 桌面 HUD ---------- */
-function drawDesktopHUD(){
-  drawTopBar();
-
-  // 左栏
-  const lx = L.leftX, ly = L.railY, lw = L.railW, lh = L.railH;
-  panel(lx, ly, lw, lh, { fill:'rgba(12,16,24,0.9)', stroke:CO.edge, inner:'rgba(53,224,107,0.10)', c:12 });
-  txt('农田商店', lx+18, ly+26, 17, CO.lime, 'left');
-  txt('CROP SHOP', lx+18, ly+48, 10, CO.dim, 'left');
-
-  const cardH = Math.min(84, (lh-96)/4 - 8);
-  for(let i=0;i<4;i++){
-    cropCard(i, lx+14, ly+64 + i*(cardH+8), lw-28, cardH);
-  }
-
-  // 右栏
-  const rx = L.rightX, ry = L.railY, rw = L.railW, rh = L.railH;
-  panel(rx, ry, rw, rh, { fill:'rgba(12,16,24,0.9)', stroke:CO.edge, inner:'rgba(67,217,255,0.10)', c:12 });
-  txt('自动化设备', rx+18, ry+26, 17, CO.cyan, 'left');
-  txt('AUTOMATION', rx+18, ry+48, 10, CO.dim, 'left');
-
-  helperCard('sprinkler', rx+14, ry+66, rw-28, 92);
-  helperCard('scarecrow', rx+14, ry+166, rw-28, 92);
-
-  // 农田扩展
-  const eb = { x:rx+14, y:ry+270, w:rw-28, h:52 };
-  const canExpand = S.gridN<6;
-  const eCost = canExpand ? EXPAND_COST[S.gridN-4] : 0;
-  button(eb.x, eb.y, eb.w, eb.h,
-    canExpand ? ('扩展农田 '+S.gridN+'→'+(S.gridN+1)+'  ('+eCost+')') : '农田已全部解锁',
-    'expand', { active:canExpand, disabled:!canExpand, stroke:CO.gold, color:canExpand?CO.gold:CO.dim });
-
-  // 状态
-  const sy = eb.y+66;
-  txt('农场状态', rx+18, sy, 13, CO.dim, 'left');
-  const rows = [
-    ['已播种格', countPlanted()+' / '+(S.gridN*S.gridN)],
-    ['累计金币', Math.floor(S.total).toLocaleString('en-US')],
-    ['收获次数', String(S.harvests)],
-    ['洒水加成', '×'+HELPERS.sprinkler.mult[S.sprinkler].toFixed(2)],
-    ['离线上限', '8 小时']
-  ];
-  rows.forEach((r,i)=>{
-    txt(r[0], rx+18, sy+24+i*22, 12, CO.dim, 'left');
-    txt(r[1], rx+rw-18, sy+24+i*22, 12, CO.ink, 'right');
-  });
-
-  // 控制按钮
-  const by = ry+rh-46;
-  const bw = (rw-28-16)/3;
-  button(rx+14, by, bw, 38, S.muted?'声音 关':'声音 开', 'mute', { stroke:S.muted?CO.red:CO.green, color:S.muted?CO.red:CO.green });
-  button(rx+14+bw+8, by, bw, 38, '暂停', 'pause', { stroke:CO.cyan, color:CO.cyan });
-  button(rx+14+(bw+8)*2, by, bw, 38, '重开', 'reset', { stroke:CO.red, color:CO.red });
-
-  // 底部提示
-  txt('方向键 / WASD 移动光标 · 空格 播种/收获 · 1-4 选作物 · U 升级面板 · P 暂停 · R 重开 · M 静音',
-      W/2, H-26, 12, CO.dim, 'center');
-
-  // 光标
-  drawCursor();
+/* =========================================================================
+   模块 3 / 状态与存档
+   ========================================================================= */
+var SAVE_KEY = 'blockFarm_save_v1';
+var state = {
+  coins: 30, level: 1, exp: 0, total: 0, harvest: 0, planted: 0,
+  size: 4, tiles: [], fac: [0, 0, 0, 0, 0], sel: 0, cat: 0,
+  paused: false, modal: null, confirmReset: 0, toast: null,
+  timer: { sc: 0, hive: 0, pond: 0 }, saveT: 0
+};
+function makeTiles(n){
+  n = clamp(Math.round(num(n, 4)), 2, 8);
+  var arr = [];
+  for (var i = 0; i < n * n; i++) arr.push({ crop: -1, growth: 0, pest: false, seed: Math.random() * 100 });
+  return arr;
 }
-function countPlanted(){
-  let n=0;
-  for(let r=0;r<S.gridN;r++) for(let c=0;c<S.gridN;c++) if(S.plots[r*6+c].crop!==null) n++;
+function expNeed(l){ return Math.round(EXP_BASE * Math.pow(Math.max(1, num(l, 1)), 1.5)); }
+function isUnlocked(i){ var c = CROPS[clamp(i, 0, CROPS.length - 1)]; return state.total >= num(c.unlock, 0); }
+function unlockedCount(){
+  var n = 0; for (var i = 0; i < CROPS.length; i++) if (isUnlocked(i)) n++;
   return n;
 }
-function helperCard(key,x,y,w,h){
-  const H0 = HELPERS[key];
-  const lvl = S[key];
-  const maxed = lvl>=3;
-  ctx.save();
-  chamfer(x,y,w,h,7);
-  ctx.fillStyle = 'rgba(22,28,40,0.95)';
-  ctx.fill();
-  ctx.lineWidth = 1.5;
-  ctx.strokeStyle = maxed ? 'rgba(197,107,255,0.7)' : CO.edge;
-  ctx.stroke();
-  ctx.restore();
-
-  txt(H0.name, x+14, y+20, 16, key==='sprinkler'?CO.cyan:CO.gold, 'left');
-  txt(H0.desc, x+14, y+42, 11, CO.dim, 'left');
-  txt('等级 '+lvl+' / 3   '+H0.effect(lvl), x+14, y+62, 11, CO.ink, 'left');
-
-  // 等级点
-  for(let i=0;i<3;i++){
-    ctx.fillStyle = i<lvl ? (key==='sprinkler'?CO.cyan:CO.gold) : 'rgba(255,255,255,0.14)';
-    ctx.fillRect(x+14+i*16, y+74, 11, 6);
-  }
-
-  const bw = 92, bh = 34;
-  const label = maxed ? '满级' : ('升级 '+H0.costs[lvl]);
-  button(x+w-bw-12, y+h/2-bh/2, bw, bh, label, 'buy_'+key,
-    { disabled:maxed, active:!maxed, stroke:key==='sprinkler'?CO.cyan:CO.gold,
-      color:key==='sprinkler'?CO.cyan:CO.gold });
+function buffSpr(){ var l = state.fac[0]; return l > 0 ? num(FAC[0].vals[l - 1], 1) : 1; }
+function buffWind(){ var l = state.fac[1]; return l > 0 ? num(FAC[1].vals[l - 1], 1) : 1; }
+function priceOf(i){
+  var c = CROPS[clamp(i, 0, CROPS.length - 1)];
+  var v = num(c.price, 1) * (1 + 0.03 * Math.max(0, state.level - 1)) * num(CATS[c.cat].price, 1) * buffWind();
+  return Math.max(1, Math.round(v));
+}
+function growTimeOf(i){
+  var c = CROPS[clamp(i, 0, CROPS.length - 1)];
+  var v = num(c.time, 1) / Math.max(0.05, buffSpr() * num(CATS[c.cat].grow, 1));
+  return Math.max(0.6, v);
+}
+function stageOf(g, total){
+  total = Math.max(0.001, num(total, 1));
+  return clamp(Math.floor(num(g) / total * 4), 0, 3);
+}
+function saveGame(){
+  try{
+    var tiles = [];
+    for (var i = 0; i < state.tiles.length; i++){
+      var t = state.tiles[i];
+      tiles.push({ c: Math.round(num(t.crop, -1)), g: Math.round(num(t.growth, 0) * 100) / 100, p: t.pest ? 1 : 0, s: Math.round(num(t.seed, 0) * 100) / 100 });
+    }
+    localStorage.setItem(SAVE_KEY, JSON.stringify({
+      v: 2, coins: state.coins, level: state.level, exp: state.exp, total: state.total,
+      harvest: state.harvest, planted: state.planted, size: state.size, tiles: tiles,
+      fac: state.fac, sel: state.sel, cat: state.cat, sound: audio.on, ts: Date.now()
+    }));
+  } catch (e){ /* 静默容错 */ }
+}
+function loadGame(){
+  var raw = null;
+  try { raw = localStorage.getItem(SAVE_KEY); } catch (e){ raw = null; }
+  if (!raw) return null;
+  try{
+    var d = JSON.parse(raw);
+    if (!d || typeof d !== 'object') return null;
+    state.coins = Math.max(0, num(d.coins, 30));
+    state.level = Math.max(1, Math.round(num(d.level, 1)));
+    state.exp = Math.max(0, num(d.exp, 0));
+    state.total = Math.max(0, num(d.total, 0));
+    state.harvest = Math.max(0, Math.round(num(d.harvest, 0)));
+    state.planted = Math.max(0, Math.round(num(d.planted, 0)));
+    state.size = clamp(Math.round(num(d.size, 4)), 4, 6);
+    state.fac = [];
+    for (var f = 0; f < 5; f++) state.fac.push(clamp(Math.round(num(d.fac && d.fac[f], 0)), 0, 3));
+    state.sel = clamp(Math.round(num(d.sel, 0)), 0, CROPS.length - 1);
+    state.cat = clamp(Math.round(num(d.cat, 0)), 0, 3);
+    audio.on = d.sound === false ? false : true;
+    state.tiles = makeTiles(state.size);
+    if (d.tiles && d.tiles.length){
+      for (var i = 0; i < state.tiles.length && i < d.tiles.length; i++){
+        var s = d.tiles[i] || {};
+        var ci = Math.round(num(s.c, -1));
+        state.tiles[i].crop = (ci >= 0 && ci < CROPS.length) ? ci : -1;
+        state.tiles[i].growth = Math.max(0, num(s.g, 0));
+        state.tiles[i].pest = s.p === 1;
+        state.tiles[i].seed = Math.max(0, num(s.s, i * 1.37));
+      }
+    }
+    return { ts: Math.max(0, num(d.ts, Date.now())) };
+  } catch (e){ return null; }
+}
+function resetGame(){
+  state.coins = 30; state.level = 1; state.exp = 0; state.total = 0; state.harvest = 0; state.planted = 0;
+  state.size = 4; state.fac = [0, 0, 0, 0, 0]; state.tiles = makeTiles(4); state.sel = 0; state.cat = 0;
+  state.timer = { sc: 0, hive: 0, pond: 0 };
+  state.modal = null; state.confirmReset = 0; state.paused = false;
+  saveGame();
 }
 
-/* ---------- 移动端 HUD ---------- */
-function drawMobileHUD(){
-  drawTopBar();
-
-  const y0 = L.gy + L.side + 10;
-  const w = W-20;
-
-  // 作物条
-  const chipH = Math.min(72, L.railH*0.19);
-  const chipW = (w-12)/4;
-  for(let i=0;i<4;i++){
-    cropCard(i, 10 + i*(chipW+4), y0, chipW-2, chipH);
+/* =========================================================================
+   模块 4 / 音效
+   ========================================================================= */
+var audio = {
+  ctx: null, on: true, ready: false,
+  unlock: function(){
+    if (this.ready) return;
+    try{
+      var AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return;
+      this.ctx = new AC();
+      this.ready = true;
+      if (this.ctx && this.ctx.state === 'suspended') this.ctx.resume();
+    } catch (e){ /* 忽略 */ }
+  },
+  tone: function(f, d, type, g, slide){
+    if (!this.on || !this.ctx) return;
+    try{
+      var t0 = this.ctx.currentTime;
+      var dur = Math.max(0.03, num(d, 0.12));
+      var o = this.ctx.createOscillator(), gn = this.ctx.createGain();
+      o.type = type || 'square';
+      o.frequency.setValueAtTime(Math.max(20, num(f, 440)), t0);
+      if (slide) o.frequency.exponentialRampToValueAtTime(Math.max(20, num(slide, f)), t0 + dur);
+      gn.gain.setValueAtTime(0.0001, t0);
+      gn.gain.exponentialRampToValueAtTime(clamp(num(g, 0.07), 0.001, 0.28), t0 + 0.012);
+      gn.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+      o.connect(gn); gn.connect(this.ctx.destination);
+      o.start(t0); o.stop(t0 + dur + 0.03);
+    } catch (e){ /* 忽略 */ }
+  },
+  sfx: function(name){
+    if (!this.on) return;
+    try{
+      if (name === 'plant'){ this.tone(420, 0.07, 'triangle', 0.07, 620); }
+      else if (name === 'harvest'){ this.tone(620, 0.07, 'square', 0.06, 880); this.tone(940, 0.1, 'triangle', 0.05, 1180); }
+      else if (name === 'click'){ this.tone(560, 0.04, 'square', 0.04); }
+      else if (name === 'error'){ this.tone(180, 0.16, 'sawtooth', 0.06, 90); }
+      else if (name === 'coin'){ this.tone(1180, 0.05, 'triangle', 0.05, 1480); }
+      else if (name === 'pest'){ this.tone(300, 0.09, 'sawtooth', 0.05, 220); }
+      else if (name === 'level'){ var f = [523, 659, 784, 1046]; for (var i = 0; i < f.length; i++) this.tone(f[i], 0.12, 'triangle', 0.06); }
+      else if (name === 'boost'){ this.tone(760, 0.07, 'triangle', 0.05, 1080); }
+      else if (name === 'unlock'){ this.tone(520, 0.08, 'triangle', 0.06, 780); this.tone(880, 0.12, 'triangle', 0.05, 1320); }
+    } catch (e){ /* 忽略 */ }
   }
+};
 
-  const y1 = y0 + chipH + 8;
-  const bh = 46;
-  button(10, y1, chipW*2-4, bh, S.muted?'声音 关':'声音 开', 'mute', { stroke:S.muted?CO.red:CO.green, color:S.muted?CO.red:CO.green });
-  button(10+chipW*2+2, y1, chipW-2, bh, '升级', 'upgrade', { stroke:CO.cyan, color:CO.cyan });
-  button(10+chipW*3+2, y1, chipW-2, bh, '暂停', 'pause', { stroke:CO.gold, color:CO.gold });
-
-  const y2 = y1 + bh + 8;
-  const gh = 52;
-  const canExpand = S.gridN<6;
-  const eCost = canExpand ? EXPAND_COST[S.gridN-4] : 0;
-  button(10, y2, w*0.5-6, gh,
-    canExpand ? ('扩展 '+S.gridN+'→'+(S.gridN+1)+' ('+eCost+')') : '农田全解锁',
-    'expand', { active:canExpand, disabled:!canExpand, stroke:CO.gold, color:canExpand?CO.gold:CO.dim, size:15 });
-
-  button(10+w*0.5+2, y2, w*0.5-6, gh, '播种 / 收获', 'act', { stroke:CO.lime, color:CO.lime, fill:'rgba(53,224,107,0.16)', size:18 });
-
-  const y3 = y2 + gh + 8;
-  txt('左半屏滑动移动光标 · 点击田地播种 / 收获 · 点击害虫清除', W/2, y3+12, 11, CO.dim, 'center');
-
-  drawCursor();
+/* =========================================================================
+   模块 5 / 粒子特效 / 浮字 / 屏幕反馈
+   ========================================================================= */
+var particles = [];
+var floaters = [];
+var shakeAmt = 0, flashA = 0, flashCol = C.gold;
+var shakeCur = { x: 0, y: 0 };
+function addParticle(x, y, vx, vy, life, col, size, kind){
+  if (!isFinite(x) || !isFinite(y)) return;
+  particles.push({
+    x: num(x), y: num(y), vx: num(vx), vy: num(vy),
+    life: Math.max(0.05, num(life, 0.6)), max: Math.max(0.05, num(life, 0.6)),
+    col: col || C.gold, size: Math.max(1, num(size, 3)), kind: kind || 'coin'
+  });
+  if (particles.length > 320) particles.splice(0, particles.length - 320);
+}
+function addFloat(x, y, txt, col, size){
+  if (!isFinite(x) || !isFinite(y) || txt === undefined) return;
+  floaters.push({ x: num(x), y: num(y), vy: -34, txt: String(txt), col: col || C.gold, life: 1.15, max: 1.15, size: Math.max(8, num(size, 14)) });
+  if (floaters.length > 90) floaters.splice(0, floaters.length - 90);
+}
+function showToast(txt, col){ state.toast = { txt: String(txt), col: col || C.text, t: 2.4 }; }
+function updateEffects(dt){
+  var i;
+  for (i = particles.length - 1; i >= 0; i--){
+    var p = particles[i];
+    p.life -= dt;
+    if (p.life <= 0){ particles.splice(i, 1); continue; }
+    p.x += p.vx * dt; p.y += p.vy * dt;
+    if (p.kind === 'coin') p.vy += 150 * dt; else p.vy += 40 * dt;
+  }
+  for (i = floaters.length - 1; i >= 0; i--){
+    var f = floaters[i];
+    f.life -= dt; f.y += f.vy * dt; f.vy *= (1 - dt * 1.2);
+    if (f.life <= 0) floaters.splice(i, 1);
+  }
+  shakeAmt = Math.max(0, shakeAmt - dt * 22);
+  flashA = Math.max(0, flashA - dt * 1.7);
+  if (state.toast){ state.toast.t -= dt; if (state.toast.t <= 0) state.toast = null; }
+  if (state.confirmReset > 0){ state.confirmReset -= dt; if (state.confirmReset <= 0) state.confirmReset = 0; }
 }
 
-function drawCursor(){
-  const r = Math.floor(selIdx/6), c = selIdx%6;
-  if(isLocked(r,c)) return;
-  const x = L.gx + c*L.cell, y = L.gy + r*L.cell;
-  const t = S.time;
-  const pulse = 0.55 + Math.sin(t*6)*0.35;
-  ctx.save();
-  ctx.strokeStyle = 'rgba(184,255,52,'+pulse+')';
-  ctx.lineWidth = 3;
-  const m = 2, len = L.cell*0.26;
-  const x1=x+m, y1=y+m, x2=x+L.cell-m, y2=y+L.cell-m;
+/* =========================================================================
+   模块 6 / 布局计算
+   ========================================================================= */
+var geomCache = { N: 4, tw: 80, th: 40, ox: 0, oy: 0 };
+function computeLayout(){
+  var W = view.w, H = view.h;
+  lay.hits = [];
+  lay.portrait = (H > W * 0.92);
+  var pad = lay.portrait ? 9 : 14;
+  if (!lay.portrait){
+    var topH = clamp(H * 0.105, 62, 84);
+    var hintH = 32;
+    var leftW = clamp(W * 0.215, 246, 330);
+    var rightW = clamp(W * 0.2, 224, 300);
+    lay.top = { x: pad, y: pad, w: W - pad * 2, h: topH - pad };
+    lay.left = { x: pad, y: topH, w: leftW - pad * 0.5, h: H - topH - hintH - pad * 2 };
+    lay.right = { x: W - rightW + pad * 0.5, y: topH, w: rightW - pad * 0.5, h: H - topH - hintH - pad * 2 };
+    lay.center = { x: pad + leftW, y: topH, w: Math.max(180, W - leftW - rightW - pad * 2), h: H - topH - hintH - pad * 2 };
+    var facH = clamp(lay.center.h * 0.28, 122, 176);
+    lay.fac = { x: lay.center.x, y: lay.center.y + lay.center.h - facH, w: lay.center.w, h: facH };
+    lay.field = { x: lay.center.x, y: lay.center.y, w: lay.center.w, h: Math.max(140, lay.center.h - facH - 8) };
+    lay.hint = { x: pad, y: H - hintH + 2, w: W - pad * 2, h: hintH - 6 };
+  } else {
+    var small = H < 640;
+    var metricH = clamp(H * (small ? 0.15 : 0.17), 88, 132);
+    var facH = clamp(H * (small ? 0.125 : 0.14), 92, 126);
+    var tabH = small ? 36 : 42;
+    var cardH = clamp(H * (small ? 0.115 : 0.128), 82, 118);
+    var btnH = small ? 38 : 44;
+    var hintH = 26;
+    var gap = 8;
+    lay.top = { x: pad, y: pad, w: W - pad * 2, h: metricH };
+    var y = pad + metricH + gap;
+    lay.fac = { x: pad, y: y, w: W - pad * 2, h: facH };
+    y += facH + gap;
+    var bottom = tabH + gap + cardH + gap + btnH + gap + hintH + gap;
+    var fh = Math.max(110, H - y - bottom - pad);
+    lay.field = { x: pad, y: y, w: W - pad * 2, h: fh };
+    y += fh + gap;
+    lay.tabs = { x: pad, y: y, w: W - pad * 2, h: tabH }; y += tabH + gap;
+    lay.cards = { x: pad, y: y, w: W - pad * 2, h: cardH }; y += cardH + gap;
+    lay.btns = { x: pad, y: y, w: W - pad * 2, h: btnH }; y += btnH + gap;
+    lay.hint = { x: pad, y: y, w: W - pad * 2, h: hintH };
+    lay.left = lay.tabs; lay.right = lay.btns;
+  }
+  computeGeom();
+}
+function computeGeom(){
+  var F = lay.field || { x: 0, y: 0, w: 300, h: 300 };
+  var N = clamp(state.size, 2, 8);
+  var tw = Math.min(F.w * 0.94 / N, F.h / (N / 2 + 0.85));
+  tw = clamp(tw, 22, 150);
+  geomCache.N = N;
+  geomCache.tw = tw;
+  geomCache.th = tw / 2;
+  geomCache.ox = F.x + F.w / 2;
+  geomCache.oy = F.y + tw * 0.78;
+}
+function tileCenter(c, r){
+  return { x: geomCache.ox + (num(c) - num(r)) * geomCache.tw / 2, y: geomCache.oy + (num(c) + num(r)) * geomCache.th / 2 };
+}
+function screenToTile(x, y){
+  var g = geomCache;
+  if (g.tw < 4) return -1;
+  var dx = (num(x) - shakeCur.x) - g.ox, dy = (num(y) - shakeCur.y) - g.oy;
+  var c = (dx / (g.tw / 2) + dy / (g.th / 2)) / 2;
+  var r = (dy / (g.th / 2) - dx / (g.tw / 2)) / 2;
+  var ci = Math.floor(c + 0.5), ri = Math.floor(r + 0.5);
+  if (!isFinite(ci) || !isFinite(ri)) return -1;
+  if (ci < 0 || ri < 0 || ci >= g.N || ri >= g.N) return -1;
+  return ri * g.N + ci;
+}
+
+/* =========================================================================
+   模块 7 / 瓦片与作物绘制
+   ========================================================================= */
+function tilePath(x, y, tw){
+  var hw = Math.max(1, num(tw, 40) / 2), hh = Math.max(1, num(tw, 40) / 4);
   ctx.beginPath();
-  ctx.moveTo(x1,y1+len); ctx.lineTo(x1,y1); ctx.lineTo(x1+len,y1);
-  ctx.moveTo(x2-len,y1); ctx.lineTo(x2,y1); ctx.lineTo(x2,y1+len);
-  ctx.moveTo(x1,y2-len); ctx.lineTo(x1,y2); ctx.lineTo(x1+len,y2);
-  ctx.moveTo(x2-len,y2); ctx.lineTo(x2,y2); ctx.lineTo(x2,y2-len);
-  ctx.stroke();
-  ctx.restore();
+  ctx.moveTo(num(x), num(y) - hh); ctx.lineTo(num(x) + hw, num(y));
+  ctx.lineTo(num(x), num(y) + hh); ctx.lineTo(num(x) - hw, num(y));
+  ctx.closePath();
 }
-
-/* ---------- 启动 / 标题 ---------- */
-let bootT = 0;
-function drawBoot(){
-  const k = clamp(bootT/1.5, 0, 1);
-  drawFarmLogo(W/2, H*0.4, Math.min(W,H)*0.16);
-  txt('方块农场', W/2, H*0.62, Math.min(52, W*0.12), CO.lime, 'center');
-  txt('BLOCK FARM', W/2, H*0.62 + Math.min(52,W*0.12)*0.72, 12, CO.dim, 'center');
-
-  const bw = Math.min(320, W*0.66), bh = 12;
-  const bx = (W-bw)/2, by = H*0.78;
-  ctx.fillStyle = 'rgba(255,255,255,0.10)';
-  ctx.fillRect(bx,by,bw,bh);
-  const g = ctx.createLinearGradient(bx,0,bx+bw,0);
-  g.addColorStop(0,CO.green); g.addColorStop(1,CO.gold);
-  ctx.fillStyle = g; ctx.fillRect(bx,by,bw*k,bh);
-  txt('加载中… '+Math.round(k*100)+'%', W/2, by+32, 12, CO.dim, 'center');
-}
-
-function drawFarmLogo(cx,cy,s){
-  ctx.save();
-  ctx.translate(cx,cy);
-  const cell = s/3;
-  for(let r=0;r<3;r++){
-    for(let c=0;c<3;c++){
-      const x = -s/2 + c*cell, y = -s/2 + r*cell;
-      ctx.fillStyle = (r===1&&c===1) ? '#1b2631' : '#141b25';
-      ctx.fillRect(x+3,y+3,cell-6,cell-6);
-      ctx.strokeStyle = CO.edge2; ctx.lineWidth = 2;
-      ctx.strokeRect(x+3,y+3,cell-6,cell-6);
+/* --- 种子：按类别区分 --- */
+function drawSeed(cat, x, y, s, t, ph){
+  var u = Math.max(2, num(s, 20)) / 30, cx = x, cy = y - 1.5 * u, i;
+  if (cat === 0){
+    var an = [-0.72, -0.12, 0.52];
+    for (i = 0; i < 3; i++){
+      var px2 = cx + (i - 1) * 7 * u, py = cy + (i === 1 ? -2.6 * u : 1.8 * u);
+      ell(px2, py, 3.9 * u, 1.85 * u, an[i], '#e2b349', '#7d5c18', 0.9 * u);
+      ell(px2 - 1.1 * u, py - 0.7 * u, 1.35 * u, 0.5 * u, an[i], 'rgba(255,241,190,0.72)');
+    }
+  } else if (cat === 1){
+    var pts = [[-6, 2.2], [6, 2.2], [0, -4.6]];
+    for (i = 0; i < 3; i++){
+      var qx = cx + pts[i][0] * u, qy = cy + pts[i][1] * u;
+      ell(qx, qy, 3.3 * u, 3 * u, 0, '#59bf63', '#276234', 0.9 * u);
+      ell(qx - 1.15 * u, qy - 1.15 * u, 1.2 * u, 0.92 * u, -0.6, 'rgba(226,255,228,0.8)');
+    }
+  } else if (cat === 2){
+    var pos = [[-6.6, 1.5], [0, -3.4], [6.6, 1.5]];
+    for (i = 0; i < 3; i++){
+      var mx = cx + pos[i][0] * u, my = cy + pos[i][1] * u, rot = [-0.45, 0, 0.45][i];
+      ell(mx, my, 3.9 * u, 2.4 * u, rot, '#2f7f4c', '#173f27', 0.9 * u);
+      line(mx - 3 * u * Math.cos(rot), my - 3 * u * Math.sin(rot), mx + 3 * u * Math.cos(rot), my + 3 * u * Math.sin(rot), 'rgba(180,255,210,0.35)', 0.8 * u);
+    }
+  } else {
+    var sp = [[-5, -2.5], [5, -2.5], [-5, 3], [5, 3]];
+    for (i = 0; i < 4; i++){
+      var fx = cx + sp[i][0] * u, fy = cy + sp[i][1] * u;
+      ell(fx, fy, 1.9 * u, 1.5 * u, i * 0.6, '#ff8fc4', '#a12c62', 0.7 * u);
+      ell(fx - 0.5 * u, fy - 0.5 * u, 0.7 * u, 0.5 * u, 0, 'rgba(255,235,245,0.8)');
     }
   }
-  drawCropIcon(1, 3, 0, 0, s*0.34, S.time, 1.2);
-  ctx.restore();
 }
-
-function drawTitle(){
-  drawBackgroundGrid();
-
-  // 装饰田地
-  ctx.globalAlpha = 0.28;
-  const side = Math.min(W,H)*0.62;
-  const gx = (W-side)/2, gy = H*0.52 - side/2;
-  for(let r=0;r<4;r++) for(let c=0;c<4;c++){
-    const s = side/4;
-    ctx.fillStyle = '#111823';
-    ctx.fillRect(gx+c*s+5, gy+r*s+5, s-10, s-10);
-    ctx.strokeStyle = CO.edge; ctx.lineWidth = 2;
-    ctx.strokeRect(gx+c*s+5, gy+r*s+5, s-10, s-10);
-    if((r+c)%2===0) drawCropIcon((r*4+c)%4, 3, gx+c*s+s/2, gy+r*s+s/2, s*0.3, S.time, r+c);
+/* --- 幼苗：按类别区分 --- */
+function drawSeedling(cat, x, y, s, t, ph, col){
+  var u = Math.max(2, num(s, 20)) / 30, i, sw = Math.sin(t * 1.9 + ph) * 2.2 * u;
+  if (cat === 0){
+    for (i = 0; i < 5; i++){
+      var dx = (i - 2) * 3.4 * u, lean = (i - 2) * 3.2 * u;
+      curve(x + dx, y, x + dx + lean * 0.4 + sw * 0.4, y - 11 * u, x + dx + lean + sw * (0.7 + i * 0.1), y - 21 * u, i % 2 ? '#6fd06a' : '#8ce07c', 1.9 * u);
+    }
+  } else if (cat === 1){
+    line(x, y, x + sw * 0.35, y - 12 * u, '#4fae52', 2.4 * u);
+    ell(x - 7.5 * u + sw * 0.4, y - 11 * u, 6.2 * u, 4.2 * u, -0.42, '#43c25c', '#1e6b32', 1 * u);
+    ell(x + 7.5 * u + sw * 0.4, y - 11 * u, 6.2 * u, 4.2 * u, 0.42, '#43c25c', '#1e6b32', 1 * u);
+    ell(x + sw * 0.4, y - 17 * u, 3.6 * u, 4.4 * u, 0, '#63d877', '#256f36', 1 * u);
+  } else if (cat === 2){
+    curve(x, y, x - 4 * u + sw * 0.3, y - 10 * u, x + 2 * u + sw * 0.6, y - 17 * u, '#3f9e57', 2.1 * u);
+    var hx = x - 7 * u + sw * 0.5, hy = y - 13 * u;
+    poly([[hx, hy - 6 * u], [hx - 5 * u, hy - 1 * u], [hx - 3.2 * u, hy + 4.6 * u], [hx, hy + 1.6 * u], [hx + 3.2 * u, hy + 4.6 * u], [hx + 5 * u, hy - 1 * u]], '#4cc46a', '#1f6b36', 1 * u);
+    ctx.strokeStyle = '#79e39a'; ctx.lineWidth = Math.max(0.6, 1.2 * u);
+    ctx.beginPath(); ctx.arc(x + 9 * u + sw * 0.5, y - 12 * u, 3 * u, 0.6, 4.2); ctx.stroke();
+    ell(x + 2 * u + sw * 0.6, y - 18 * u, 3.2 * u, 2.4 * u, -0.3, '#63d877', '#256f36', 0.9 * u);
+  } else {
+    line(x, y, x + sw * 0.35, y - 13 * u, '#8b5a2b', 2.6 * u);
+    ell(x - 7 * u + sw * 0.4, y - 13 * u, 5.6 * u, 4 * u, -0.4, '#4bbf63', '#1e6b32', 1 * u);
+    ell(x + 7 * u + sw * 0.4, y - 13 * u, 5.6 * u, 4 * u, 0.4, '#4bbf63', '#1e6b32', 1 * u);
+    ell(x + sw * 0.5, y - 19 * u, 3 * u, 3.4 * u, 0, col || '#ff6bd6', '#7a2b52', 1 * u);
+    ell(x + sw * 0.5 - 1 * u, y - 20 * u, 1.1 * u, 1.2 * u, 0, 'rgba(255,255,255,0.6)');
   }
-  ctx.globalAlpha = 1;
-
-  const ty = H*0.22;
-  // 像素描边标题
-  const tSize = Math.min(66, W*0.15);
+}
+/* --- 未熟：类别形态放大 + 作物色幼果 --- */
+/* ★ 修复：缩放必须围绕作物锚点 (x,y)，否则整株会被平移到 (1.2x,1.2y) 造成图层错位 */
+function drawUnripe(cat, x, y, s, t, ph, col){
+  var u = Math.max(2, num(s, 20)) / 30;
+  x = num(x); y = num(y);
   ctx.save();
-  ctx.shadowColor = 'rgba(53,224,107,0.55)';
-  ctx.shadowBlur = 28;
-  txt('方块农场', W/2, ty, tSize, CO.lime, 'center');
+  ctx.translate(x, y);
+  ctx.scale(1.2, 1.2);
+  ctx.translate(-x, -y);
+  drawSeedling(cat, x, y, s, t, ph, col);
   ctx.restore();
-  txt('BLOCK FARM', W/2, ty + tSize*0.72, Math.min(16, W*0.035), CO.gold, 'center');
-
-  txt('霓虹像素 · 放置经营 · 自动收获', W/2, ty + tSize*1.12, Math.min(14, W*0.032), CO.dim, 'center');
-
-  const bw = Math.min(300, W*0.66), bh = 62;
-  button((W-bw)/2, H*0.62, bw, bh, '开始游戏', 'start', { stroke:CO.lime, color:CO.lime, fill:'rgba(53,224,107,0.16)', size:22 });
-
-  txt(L.mobile ? '点击开始 · 触屏滑动移动光标' : '按 空格 或 点击 开始',
-      W/2, H*0.62 + bh + 30, 13, CO.dim, 'center');
-
-  const bestY = H*0.62 + bh + 66;
-  txt('最高纪录  '+Math.floor(S.best).toLocaleString('en-US')+' 金币', W/2, bestY, 15, CO.gold, 'center');
-  txt('M 静音 · P 暂停 · R 重开', W/2, bestY+26, 11, CO.dim, 'center');
+  var sw = Math.sin(t * 1.6 + ph) * 1.6 * u;
+  ell(x + sw, y - 22 * u, 4.2 * u, 3.8 * u, 0, col || '#7bd88a', '#20462c', 1 * u);
+  ell(x + sw - 1.3 * u, y - 23 * u, 1.5 * u, 1.1 * u, -0.5, 'rgba(255,255,255,0.42)');
 }
-
-/* ---------- 弹窗 ---------- */
-function drawModalShade(){
-  ctx.fillStyle = 'rgba(4,6,11,0.78)';
-  ctx.fillRect(0,0,W,H);
-}
-function drawOfflineModal(){
-  drawModalShade();
-  const w = Math.min(520, W*0.88), h = 320;
-  const x = (W-w)/2, y = (H-h)/2;
-  ctx.save();
-  ctx.shadowColor = 'rgba(255,210,63,0.35)'; ctx.shadowBlur = 30;
-  panel(x,y,w,h,{ fill:'rgba(16,20,30,0.98)', stroke:CO.gold, inner:'rgba(255,210,63,0.22)', c:14 });
-  ctx.restore();
-
-  txt('离线收益', x+w/2, y+42, 26, CO.gold, 'center');
-  txt('OFFLINE PROFIT', x+w/2, y+70, 11, CO.dim, 'center');
-
-  const hrs = Math.floor(offline.secs/3600);
-  const mins = Math.floor((offline.secs%3600)/60);
-  txt('你离开了 '+hrs+' 小时 '+mins+' 分钟', x+w/2, y+112, 16, CO.ink, 'center');
-  txt('稻草人和洒水器一直在工作', x+w/2, y+140, 13, CO.dim, 'center');
-
-  ctx.fillStyle = 'rgba(255,210,63,0.10)';
-  chamfer(x+30, y+162, w-60, 72, 8); ctx.fill();
-  txt('+'+offline.gain.toLocaleString('en-US')+' 金币', x+w/2, y+198, 34, CO.gold, 'center');
-
-  button(x+30, y+252, w-60, 52, '领取奖励', 'claimOffline', { stroke:CO.lime, color:CO.lime, fill:'rgba(53,224,107,0.16)', size:19 });
-}
-let offline = null;
-
-function drawPauseModal(){
-  drawModalShade();
-  const w = Math.min(420, W*0.86), h = 250;
-  const x = (W-w)/2, y = (H-h)/2;
-  panel(x,y,w,h,{ fill:'rgba(16,20,30,0.98)', stroke:CO.cyan, inner:'rgba(67,217,255,0.2)', c:14 });
-  txt('游戏暂停', x+w/2, y+48, 26, CO.cyan, 'center');
-  txt('PAUSED', x+w/2, y+78, 11, CO.dim, 'center');
-  txt('当前累计 '+Math.floor(S.total).toLocaleString('en-US')+' 金币 · LV.'+S.level, x+w/2, y+118, 14, CO.ink, 'center');
-  button(x+30, y+142, w-60, 46, '继续游戏', 'resume', { stroke:CO.lime, color:CO.lime, size:18 });
-  button(x+30, y+196, (w-70)/2, 40, S.muted?'声音 关':'声音 开', 'mute', { stroke:S.muted?CO.red:CO.green, color:S.muted?CO.red:CO.green, size:14 });
-  button(x+40+(w-70)/2, y+196, (w-70)/2, 40, '重新开始', 'reset', { stroke:CO.red, color:CO.red, size:14 });
-}
-function drawResetModal(){
-  drawModalShade();
-  const w = Math.min(420, W*0.86), h = 210;
-  const x = (W-w)/2, y = (H-h)/2;
-  panel(x,y,w,h,{ fill:'rgba(16,20,30,0.98)', stroke:CO.red, c:14 });
-  txt('重新开始？', x+w/2, y+48, 24, CO.red, 'center');
-  txt('将清空金币、等级与所有农田进度', x+w/2, y+88, 13, CO.dim, 'center');
-  button(x+30, y+118, (w-70)/2, 48, '取消', 'cancelReset', { stroke:CO.edge2, size:17 });
-  button(x+40+(w-70)/2, y+118, (w-70)/2, 48, '确认重开', 'confirmReset', { stroke:CO.red, color:CO.red, size:17 });
-}
-function drawUpgradeModal(){
-  drawModalShade();
-  const w = Math.min(520, W*0.92), h = 380;
-  const x = (W-w)/2, y = (H-h)/2;
-  panel(x,y,w,h,{ fill:'rgba(16,20,30,0.98)', stroke:CO.cyan, inner:'rgba(67,217,255,0.18)', c:14 });
-  txt('升级面板', x+w/2, y+38, 22, CO.cyan, 'center');
-  helperCard('sprinkler', x+22, y+66, w-44, 112);
-  helperCard('scarecrow', x+22, y+190, w-44, 112);
-  txt('升级会立即作用于整块农田', x+w/2, y+322, 12, CO.dim, 'center');
-  button(x+22, y+h-58, w-44, 42, '关闭', 'closeUpgrade', { stroke:CO.edge2, size:16 });
-}
-
-function drawToasts(){
-  const baseY = L.mobile ? L.topH + 16 : L.topH + 22;
-  for(let i=0;i<toasts.length;i++){
-    const t = toasts[i];
-    const k = t.t/t.life;
-    const a = k<0.12 ? k/0.12 : (k>0.82 ? (1-k)/0.18 : 1);
-    const y = baseY + i*34 - (1-a)*10;
-    ctx.globalAlpha = clamp(a,0,1);
-    const w = Math.min(W*0.8, t.text.length*15 + 34);
-    const x = (W-w)/2;
-    ctx.fillStyle = 'rgba(10,14,22,0.9)';
-    chamfer(x, y-15, w, 30, 6); ctx.fill();
-    ctx.strokeStyle = t.color; ctx.lineWidth = 1.5; ctx.stroke();
-    txt(t.text, W/2, y, 14, t.color, 'center');
-    ctx.globalAlpha = 1;
+/* --- 成熟形态：12 种独立矢量 --- */
+function cropWheat(x, y, u, t, ph){
+  var sway = Math.sin(t * 1.5 + ph) * 2.2 * u, i, j;
+  for (i = 0; i < 3; i++){
+    var dx = (i - 1) * 7 * u, lean = (i - 1) * 3.4 * u;
+    var tx = x + dx + lean + sway * (0.5 + i * 0.18), ty = y - 33 * u;
+    var mx = x + dx + lean * 0.4 + sway * 0.3, my = y - 18 * u;
+    curve(x + dx, y, mx, my, tx, ty, '#b98f2e', 2.1 * u);
+    for (j = 0; j < 7; j++){
+      var q = qpt(x + dx, y, mx, my, tx, ty, 0.42 + j * 0.09);
+      var gz = 1 - j * 0.035;
+      ell(q.x - 3.1 * u * gz, q.y, 2.7 * u * gz, 1.62 * u * gz, -0.55, '#f0c33c');
+      ell(q.x + 3.1 * u * gz, q.y, 2.7 * u * gz, 1.62 * u * gz, 0.55, '#ffdf7a');
+    }
+    for (j = 0; j < 3; j++){
+      var q2 = qpt(x + dx, y, mx, my, tx, ty, 0.6 + j * 0.16);
+      line(q2.x, q2.y, q2.x + (j - 1) * 3.6 * u + sway * 0.35, q2.y - 9 * u, 'rgba(255,231,158,0.85)', 1.05 * u);
+    }
   }
 }
+function cropCorn(x, y, u, t, ph){
+  var sway = Math.sin(t * 1.2 + ph) * 1.7 * u;
+  curve(x, y, x + sway * 0.5, y - 16 * u, x + sway, y - 30 * u, '#7fae3c', 2.5 * u);
+  poly([[x - 3 * u, y - 8 * u], [x - 13 * u, y - 21 * u], [x - 6 * u, y - 24 * u], [x - 1 * u, y - 13 * u]], '#3f8f3a', '#20541f', 1 * u);
+  poly([[x + 3 * u, y - 8 * u], [x + 13 * u, y - 21 * u], [x + 6 * u, y - 24 * u], [x + 1 * u, y - 13 * u]], '#4aa044', '#20541f', 1 * u);
+  var cx = x + sway * 0.6, cy = y - 19 * u;
+  ell(cx, cy, 5.6 * u, 11.5 * u, 0.12, '#ffd23f', '#c99a1c', 1.4 * u);
+  var r, c2;
+  for (r = 0; r < 6; r++){
+    for (c2 = -1; c2 <= 1; c2++){
+      var a = c2 * 0.36;
+      ell(cx + Math.sin(a) * 5.2 * u, cy - 8.6 * u + r * 3.3 * u, 1.75 * u, 1.55 * u, 0.12, (r + c2) % 2 ? '#f0bb2c' : '#ffe287');
+    }
+  }
+  for (r = 0; r < 4; r++){
+    curve(cx, cy - 11 * u, cx + (r - 1.5) * 3 * u, cy - 16 * u, cx + (r - 1.5) * 6.5 * u + sway, cy - 20 * u, '#e8b93c', 1.1 * u);
+  }
+}
+function cropRice(x, y, u, t, ph){
+  var sway = Math.sin(t * 1.1 + ph) * 2.2 * u, i, j;
+  for (i = 0; i < 3; i++){
+    var dx = (i - 1) * 8 * u;
+    var dir = (i - 1) === 0 ? 1 : (i - 1);
+    curve(x + dx, y, x + dx * 1.15 + sway * 0.4, y - 15 * u, x + dx * 1.35 + sway, y - 23 * u, '#9ab84f', 2 * u);
+    var ex = x + dx * 1.35 + sway, ey = y - 23 * u;
+    var cx2 = ex + dir * 7 * u + sway * 0.4, cy2 = ey + 1 * u;
+    var ex2 = ex + dir * 13 * u + sway * 0.7, ey2 = ey + 12 * u;
+    curve(ex, ey, cx2, cy2, ex2, ey2, '#c2b055', 1.5 * u);
+    for (j = 0; j < 8; j++){
+      var q = qpt(ex, ey, cx2, cy2, ex2, ey2, j / 7);
+      ell(q.x + (j % 2 ? 1.6 * u : -1.6 * u), q.y + 1.4 * u, 2.1 * u, 1.15 * u, 0.5 + j * 0.12, '#e8d27a', '#a08b32', 0.6 * u);
+    }
+  }
+}
+function cropTurnip(x, y, u, t, ph){
+  var sway = Math.sin(t * 1.4 + ph) * 1.6 * u;
+  for (var i = 0; i < 3; i++){
+    var ang = (i - 1) * 0.5;
+    curve(x, y - 12 * u, x + Math.sin(ang) * 8 * u + sway * 0.5, y - 22 * u, x + Math.sin(ang) * 13 * u + sway, y - 27 * u, '#3f9c4c', 2 * u);
+    ell(x + Math.sin(ang) * 15 * u + sway, y - 29 * u, 5.6 * u, 3.6 * u, ang, '#4cc263', '#216634', 1 * u);
+  }
+  var g = ctx.createLinearGradient(x, y - 12 * u, x, y + 2 * u);
+  g.addColorStop(0, '#f3e7ff'); g.addColorStop(0.42, '#d8a6ff'); g.addColorStop(1, '#a95fe0');
+  ell(x, y - 5 * u, 8.6 * u, 8 * u, 0, g, '#6e34a0', 1.2 * u);
+  ell(x - 3 * u, y - 8.5 * u, 3 * u, 2 * u, -0.5, 'rgba(255,255,255,0.5)');
+  poly([[x - 1.6 * u, y + 2 * u], [x + 1.6 * u, y + 2 * u], [x + 0.4 * u, y + 9 * u]], '#e7d3ff', '#8c53bd', 0.9 * u);
+}
+function cropCarrot(x, y, u, t, ph){
+  var sway = Math.sin(t * 1.5 + ph) * 1.8 * u, i;
+  for (i = 0; i < 3; i++){
+    var ang = (i - 1) * 0.55;
+    curve(x, y - 12 * u, x + Math.sin(ang) * 6 * u + sway * 0.4, y - 21 * u, x + Math.sin(ang) * 11 * u + sway, y - 28 * u, '#4fa64c', 1.8 * u);
+    for (var j = 1; j <= 3; j++){
+      var q = qpt(x, y - 12 * u, x + Math.sin(ang) * 6 * u, y - 21 * u, x + Math.sin(ang) * 11 * u + sway, y - 28 * u, j / 4);
+      line(q.x, q.y, q.x + (j - 2) * 3 * u, q.y - 3.4 * u, '#6ec96a', 1.2 * u);
+    }
+  }
+  poly([[x - 6 * u, y - 13 * u], [x + 6 * u, y - 13 * u], [x + 1.2 * u, y + 6 * u]], '#ff9d3c', '#c2621a', 1.2 * u);
+  for (i = 0; i < 3; i++) line(x - 4.4 * u + i * 3 * u, y - 9 * u + i * 1.4 * u, x + 4.4 * u - i * 3 * u, y - 9 * u + i * 1.4 * u, 'rgba(190,90,20,0.5)', 1 * u);
+}
+function cropEggplant(x, y, u, t, ph){
+  var sway = Math.sin(t * 1.3 + ph) * 1.5 * u;
+  curve(x, y - 12 * u, x + sway * 0.6, y - 19 * u, x + sway, y - 25 * u, '#4c8f3c', 2.2 * u);
+  var bx = x + sway * 0.8, by = y - 7 * u;
+  var g = ctx.createLinearGradient(bx - 7 * u, by - 10 * u, bx + 7 * u, by + 10 * u);
+  g.addColorStop(0, '#b072ff'); g.addColorStop(1, '#6b23c9');
+  ell(bx, by, 7 * u, 11 * u, 0.16, g, '#4b1590', 1.3 * u);
+  ell(bx - 2.4 * u, by - 5 * u, 2.2 * u, 3.6 * u, 0.3, 'rgba(255,255,255,0.35)');
+  var star = [];
+  for (var i = 0; i < 10; i++){
+    var ang = -Math.PI / 2 + i * Math.PI / 5;
+    var rr = (i % 2 === 0) ? 7.2 * u : 3.1 * u;
+    star.push([bx + Math.cos(ang) * rr, by - 10 * u + Math.sin(ang) * rr * 0.72]);
+  }
+  poly(star, '#3f9c4c', '#22663a', 1 * u);
+}
+function cropPumpkin(x, y, u, t, ph){
+  var sway = Math.sin(t * 1.1 + ph) * 1.3 * u;
+  var g = ctx.createLinearGradient(x - 11 * u, y - 12 * u, x + 11 * u, y + 8 * u);
+  g.addColorStop(0, '#ffb04a'); g.addColorStop(1, '#e0761c');
+  ell(x, y - 5 * u, 11.5 * u, 8.6 * u, 0, g, '#a6531a', 1.3 * u);
+  for (var i = -2; i <= 2; i++){
+    ell(x + i * 4.2 * u, y - 5 * u, 1.6 * u, 8.4 * u, 0, null, 'rgba(150,70,20,0.55)', 1.1 * u);
+  }
+  ell(x - 3.6 * u, y - 8.6 * u, 3 * u, 1.8 * u, -0.4, 'rgba(255,232,190,0.4)');
+  curve(x, y - 13 * u, x + sway, y - 18 * u, x + 3 * u + sway, y - 21 * u, '#4c8f3c', 2.4 * u);
+  ell(x + 11 * u + sway, y - 19 * u, 5.4 * u, 4.2 * u, -0.45, '#3f9c4c', '#20562c', 1 * u);
+}
+function cropCucumber(x, y, u, t, ph){
+  var sway = Math.sin(t * 1.25 + ph) * 1.6 * u;
+  curve(x, y - 6 * u, x + sway * 0.5, y - 15 * u, x + sway, y - 22 * u, '#4c9c48', 2 * u);
+  var bx = x + sway * 0.6, by = y - 6 * u;
+  ell(bx, by, 6.4 * u, 11.2 * u, 0.28, '#5fd77a', '#22703c', 1.3 * u);
+  for (var r = 0; r < 5; r++){
+    for (var c2 = -1; c2 <= 1; c2++){
+      ell(bx + c2 * 2.6 * u + Math.sin(r) * 1.2 * u, by - 8 * u + r * 4 * u, 1.1 * u, 1.1 * u, 0, 'rgba(190,255,205,0.42)');
+    }
+  }
+  ell(bx - 2.2 * u, by - 7 * u, 1.8 * u, 3.2 * u, 0.3, 'rgba(255,255,255,0.22)');
+  ell(x + 9 * u + sway, y - 22 * u, 4.2 * u, 3.2 * u, -0.4, '#3f9c4c', '#20562c', 1 * u);
+  ell(x - 2 * u + sway, y - 24 * u, 2.6 * u, 2.6 * u, 0, '#ffe45c', '#c79a18', 1 * u);
+}
+function cropWatermelon(x, y, u, t, ph){
+  var sway = Math.sin(t * 1.1 + ph) * 1.2 * u;
+  ell(x, y - 5 * u, 11.4 * u, 9.4 * u, 0, '#2f9e4c', '#155428', 1.4 * u);
+  for (var i = -2; i <= 2; i++){
+    ell(x + i * 4.4 * u, y - 5 * u, 1.7 * u, 9 * u, 0, null, 'rgba(16,74,36,0.85)', 1.6 * u);
+  }
+  ell(x - 3.4 * u, y - 9.4 * u, 3.2 * u, 1.8 * u, -0.35, 'rgba(220,255,225,0.28)');
+  curve(x, y - 14 * u, x + sway, y - 18 * u, x + 4 * u + sway, y - 20 * u, '#3f8f3c', 2.2 * u);
+  poly([[x + 5 * u + sway, y - 20 * u], [x + 12 * u + sway, y - 23 * u], [x + 13 * u + sway, y - 17 * u]], '#43b055', '#20622c', 1 * u);
+}
+function cropStrawberry(x, y, u, t, ph){
+  var sway = Math.sin(t * 1.4 + ph) * 1.4 * u;
+  var g = ctx.createLinearGradient(x, y - 14 * u, x, y + 4 * u);
+  g.addColorStop(0, '#ff7b95'); g.addColorStop(1, '#e02246');
+  poly([[x - 8.6 * u, y - 11 * u], [x + 8.6 * u, y - 11 * u], [x, y + 5 * u]], g, '#9c1230', 1.3 * u);
+  ell(x, y - 11 * u, 8.6 * u, 5 * u, 0, g);
+  for (var r = 0; r < 4; r++){
+    for (var c2 = -1; c2 <= 1; c2++){
+      var yy = y - 10 * u + r * 3.6 * u, xx = x + c2 * (4.6 * u - r * 1.1 * u);
+      if (Math.abs(xx - x) > 8 * u) continue;
+      ell(xx, yy, 1 * u, 1.35 * u, 0, '#ffe45c');
+    }
+  }
+  for (var i = -2; i <= 2; i++){
+    poly([[x + i * 3 * u, y - 12 * u], [x + i * 5.2 * u, y - 17 * u], [x + i * 1.6 * u, y - 15 * u]], '#3f9c4c', '#20562c', 0.9 * u);
+  }
+  curve(x, y - 16 * u, x + sway, y - 20 * u, x + sway * 1.4, y - 23 * u, '#4c8f3c', 1.8 * u);
+}
+function cropApple(x, y, u, t, ph){
+  var sway = Math.sin(t * 1.3 + ph) * 1.3 * u;
+  var g = ctx.createLinearGradient(x - 9 * u, y - 16 * u, x + 9 * u, y + 2 * u);
+  g.addColorStop(0, '#ff8f79'); g.addColorStop(1, '#e0392c');
+  ell(x, y - 7 * u, 9.4 * u, 8.8 * u, 0, g, '#9c1d16', 1.3 * u);
+  ell(x, y - 13.4 * u, 4 * u, 2.2 * u, 0, '#c9291f');
+  ell(x - 3.2 * u, y - 10 * u, 2.4 * u, 2 * u, -0.5, 'rgba(255,235,225,0.42)');
+  curve(x, y - 15 * u, x + sway * 0.8, y - 20 * u, x + 2 * u + sway, y - 23 * u, '#7c4a22', 2.2 * u);
+  ell(x + 10 * u + sway, y - 22 * u, 6 * u, 3.2 * u, -0.42, '#43b055', '#20622c', 1 * u);
+  line(x + 6 * u + sway, y - 21 * u, x + 15 * u + sway, y - 24 * u, 'rgba(230,255,235,0.5)', 0.9 * u);
+}
+function cropGrape(x, y, u, t, ph){
+  var sway = Math.sin(t * 1.1 + ph) * 1.5 * u;
+  curve(x, y - 8 * u, x + sway * 0.6, y - 18 * u, x + sway, y - 24 * u, '#7a5a2c', 2.2 * u);
+  ell(x + 9 * u + sway, y - 25 * u, 6.6 * u, 3.8 * u, -0.5, '#3f9c4c', '#20562c', 1 * u);
+  var rows = [[4, -20], [3, -14.5], [2, -9], [1, -4]];
+  for (var ri = 0; ri < rows.length; ri++){
+    var n = rows[ri][0], oy = rows[ri][1];
+    for (var i = 0; i < n; i++){
+      var gx = x + sway * 0.7 + (i - (n - 1) / 2) * 7.2 * u;
+      var gy = y + oy * u;
+      var col = ['#d290ff', '#b95cf5', '#9a3fd6', '#7d2fb8'][ri];
+      ell(gx, gy, 3.7 * u, 3.7 * u, 0, col, '#4d1b7c', 0.9 * u);
+      ell(gx - 1.2 * u, gy - 1.3 * u, 1.3 * u, 1 * u, -0.5, 'rgba(255,255,255,0.38)');
+    }
+  }
+}
+var MATURE = [cropWheat, cropCorn, cropRice, cropTurnip, cropCarrot, cropEggplant,
+  cropPumpkin, cropCucumber, cropWatermelon, cropStrawberry, cropApple, cropGrape];
 
-function drawOverlayFx(){
-  if(flashA>0){
-    ctx.fillStyle = flashCol;
-    ctx.globalAlpha = flashA*0.5;
-    ctx.fillRect(0,0,W,H);
-    ctx.globalAlpha = 1;
+function drawCrop(i, x, y, s, stage, t, ph){
+  var idx = clamp(Math.round(num(i, 0)), 0, CROPS.length - 1);
+  var c = CROPS[idx];
+  var u = Math.max(2, num(s, 20)) / 30;
+  x = num(x); y = num(y);
+  if (!isFinite(x) || !isFinite(y)) return;
+  if (stage <= 0) drawSeed(c.cat, x, y, s, t, ph);
+  else if (stage === 1) drawSeedling(c.cat, x, y, s, t, ph, c.col);
+  else if (stage === 2) drawUnripe(c.cat, x, y, s, t, ph, c.col);
+  else {
+    ctx.save();
+    ctx.shadowColor = alpha(c.col, 0.55); ctx.shadowBlur = Math.max(4, Math.min(20, 12 * u));
+    MATURE[idx](x, y, u, t, ph);
+    ctx.restore();
   }
-  if(scanPat){
-    ctx.fillStyle = scanPat;
-    ctx.fillRect(0,0,W,H);
-  }
-  if(vignette){
-    ctx.fillStyle = vignette;
-    ctx.fillRect(0,0,W,H);
-  }
-  // 顶角标记
-  ctx.strokeStyle = 'rgba(53,224,107,0.22)';
-  ctx.lineWidth = 2;
-  const m = 12, len = 26;
+}
+function drawPest(x, y, s, t, seed){
+  var u = Math.max(2, num(s, 20)) / 30, wob = Math.sin(t * 3 + num(seed) * 3) * 1.6 * u;
+  var px2 = num(x) + wob, py2 = num(y);
+  ell(px2, py2 + 9 * u, 7 * u, 2.6 * u, 0, 'rgba(0,0,0,0.32)');
+  var pulse = 0.45 + 0.25 * Math.sin(t * 4 + num(seed));
+  ell(px2, py2, 9 * u, 9 * u, 0, null, alpha('#ff5b6e', pulse), 1.6 * u);
+  ell(px2, py2 + 2 * u, 4.6 * u, 5.4 * u, 0, '#c22f45', '#5d1220', 1 * u);
+  ell(px2, py2 - 3.4 * u, 3 * u, 2.8 * u, 0, '#7d1b2c', '#3b0c15', 0.9 * u);
+  for (var i = -1; i <= 1; i++) line(px2 + i * 3 * u, py2 + 2 * u, px2 + i * 6 * u, py2 + 6 * u, '#7d1b2c', 1.1 * u);
+  line(px2 - 1.6 * u, py2 - 6 * u, px2 - 4.4 * u, py2 - 9 * u, '#7d1b2c', 1 * u);
+  line(px2 + 1.6 * u, py2 - 6 * u, px2 + 4.4 * u, py2 - 9 * u, '#7d1b2c', 1 * u);
+}
+function drawSparkle(x, y, seed, t, tw, col){
+  var cyc = fract(t * 0.5 + hash1(num(seed) * 3.17));
+  if (cyc > 0.2) return;
+  var a = (1 - cyc / 0.2) * 0.9;
+  var r = Math.max(1, num(tw, 40) * 0.13 * (0.5 + cyc * 3.4));
+  ctx.save(); ctx.globalAlpha = clamp(a, 0, 1);
+  ctx.strokeStyle = col || '#ffffff'; ctx.lineWidth = Math.max(1, num(tw, 40) * 0.014);
   ctx.beginPath();
-  ctx.moveTo(m,m+len); ctx.lineTo(m,m); ctx.lineTo(m+len,m);
-  ctx.moveTo(W-m-len,m); ctx.lineTo(W-m,m); ctx.lineTo(W-m,m+len);
-  ctx.moveTo(m,H-m-len); ctx.lineTo(m,H-m); ctx.lineTo(m+len,H-m);
-  ctx.moveTo(W-m-len,H-m); ctx.lineTo(W-m,H-m); ctx.lineTo(W-m,H-m-len);
+  ctx.moveTo(x - r, y); ctx.lineTo(x + r, y);
+  ctx.moveTo(x, y - r); ctx.lineTo(x, y + r);
   ctx.stroke();
+  ctx.strokeStyle = alpha(col || '#ffffff', 0.5);
+  ctx.beginPath();
+  ctx.moveTo(x - r * 0.6, y - r * 0.6); ctx.lineTo(x + r * 0.6, y + r * 0.6);
+  ctx.moveTo(x + r * 0.6, y - r * 0.6); ctx.lineTo(x - r * 0.6, y + r * 0.6);
+  ctx.stroke();
+  ctx.restore();
 }
 
-/* =========================================================
-   11. 输入
-   ========================================================= */
-let selIdx = 7;
-function clampSel(){
-  const r = clamp(Math.floor(selIdx/6), 0, S.gridN-1);
-  const c = clamp(selIdx%6, 0, S.gridN-1);
-  selIdx = r*6+c;
+/* =========================================================================
+   模块 8 / 设施图标绘制
+   ========================================================================= */
+function iconSprinkler(x, y, s, t, lv){
+  var u = s / 30;
+  line(x, y + 8 * u, x, y - 12 * u, '#7fa8c8', 3 * u);
+  poly([[x - 8 * u, y - 12 * u], [x + 8 * u, y - 12 * u], [x + 5 * u, y - 18 * u], [x - 5 * u, y - 18 * u]], '#9fc6e2', '#3b5c76', 1.2 * u);
+  ell(x, y - 18 * u, 3 * u, 2.4 * u, 0, '#cfe8f7', '#3b5c76', 1 * u);
+  ell(x, y + 8 * u, 7 * u, 2.6 * u, 0, 'rgba(0,0,0,0.3)');
+  if (lv > 0){
+    for (var i = 0; i < 7; i++){
+      var p = fract(t * 0.85 + i * 0.16);
+      var ang = -Math.PI * 0.15 - i * 0.22;
+      var rx = Math.cos(ang) * 16 * u * p, ry = Math.sin(ang) * 16 * u * p + 13 * u * p * p;
+      ell(x + rx, y - 16 * u + ry, 1.5 * u, 2.1 * u, 0, alpha('#43d9ff', 0.75 * (1 - p * 0.6)));
+    }
+    for (var j = 0; j < 7; j++){
+      var p2 = fract(t * 0.85 + j * 0.16 + 0.5);
+      var ang2 = -Math.PI * 0.85 + j * 0.22;
+      var rx2 = Math.cos(ang2) * 16 * u * p2, ry2 = Math.sin(ang2) * 16 * u * p2 + 13 * u * p2 * p2;
+      ell(x + rx2, y - 16 * u + ry2, 1.5 * u, 2.1 * u, 0, alpha('#43d9ff', 0.75 * (1 - p2 * 0.6)));
+    }
+  }
 }
+function iconWindmill(x, y, s, t, lv){
+  var u = s / 30;
+  poly([[x - 7 * u, y + 9 * u], [x + 7 * u, y + 9 * u], [x + 3.4 * u, y - 12 * u], [x - 3.4 * u, y - 12 * u]], '#6f8ea8', '#2c4356', 1.2 * u);
+  line(x - 5 * u, y + 2 * u, x + 5 * u, y + 2 * u, '#2c4356', 1 * u);
+  line(x - 4.2 * u, y - 4 * u, x + 4.2 * u, y - 4 * u, '#2c4356', 1 * u);
+  var ang = lv > 0 ? t * 1.15 : 0.5;
+  ell(x, y - 14 * u, 3.2 * u, 3.2 * u, 0, '#e8f2f8', '#2c4356', 1 * u);
+  for (var i = 0; i < 4; i++){
+    var a = ang + i * Math.PI / 2;
+    var bx = x + Math.cos(a) * 3 * u, by = y - 14 * u + Math.sin(a) * 3 * u;
+    var ex = x + Math.cos(a) * 17 * u, ey = y - 14 * u + Math.sin(a) * 17 * u;
+    var nx = -Math.sin(a) * 3.4 * u, ny = Math.cos(a) * 3.4 * u;
+    poly([[bx, by], [ex + nx * 0.5, ey + ny * 0.5], [ex - nx * 0.5, ey - ny * 0.5]], '#c9e36a', '#5c7220', 1 * u);
+  }
+}
+function iconScarecrow(x, y, s, t, lv){
+  var u = s / 30, sway = Math.sin(t * 1.4) * 1.2 * u;
+  line(x, y + 10 * u, x, y - 12 * u + sway, '#8a6236', 3 * u);
+  line(x - 12 * u, y - 6 * u + sway, x + 12 * u, y - 6 * u + sway, '#8a6236', 2.6 * u);
+  poly([[x - 8 * u, y - 6 * u + sway], [x - 3 * u, y - 4 * u + sway], [x - 4 * u, y + 5 * u + sway], [x - 9 * u, y + 3 * u + sway]], '#c98b3c', '#7a4d1c', 1 * u);
+  poly([[x + 8 * u, y - 6 * u + sway], [x + 3 * u, y - 4 * u + sway], [x + 4 * u, y + 5 * u + sway], [x + 9 * u, y + 3 * u + sway]], '#c98b3c', '#7a4d1c', 1 * u);
+  poly([[x - 6 * u, y - 8 * u + sway], [x + 6 * u, y - 8 * u + sway], [x + 7 * u, y + 8 * u + sway], [x - 7 * u, y + 8 * u + sway]], '#b5722f', '#7a4d1c', 1.1 * u);
+  line(x, y - 8 * u + sway, x - 2.6 * u, y - 3 * u + sway, '#e8d8a8', 1.4 * u);
+  line(x, y - 8 * u + sway, x + 2.6 * u, y - 3 * u + sway, '#e8d8a8', 1.4 * u);
+  ell(x, y - 12 * u + sway, 4.4 * u, 4 * u, 0, '#e6c98d', '#7a4d1c', 1 * u);
+  poly([[x - 11 * u, y - 13 * u + sway], [x + 11 * u, y - 13 * u + sway], [x + 6 * u, y - 16 * u + sway], [x - 6 * u, y - 16 * u + sway]], '#e0b653', '#8a5c1c', 1.1 * u);
+  line(x - 11 * u, y - 13 * u + sway, x + 11 * u, y - 13 * u + sway, '#a8752a', 1.4 * u);
+}
+function iconHive(x, y, s, t, lv){
+  var u = s / 30;
+  poly([[x - 10 * u, y + 8 * u], [x + 10 * u, y + 8 * u], [x + 8 * u, y - 12 * u], [x - 8 * u, y - 12 * u]], '#e8b531', '#8a6318', 1.3 * u);
+  for (var i = 1; i <= 3; i++){
+    var yy = y + 8 * u - i * 6.4 * u;
+    line(x - 10 * u + i * 0.7 * u, yy, x + 10 * u - i * 0.7 * u, yy, '#a97c1e', 1.3 * u);
+  }
+  poly([[x - 11 * u, y - 12 * u], [x + 11 * u, y - 12 * u], [x + 6 * u, y - 17 * u], [x - 6 * u, y - 17 * u]], '#f2c94f', '#8a6318', 1.2 * u);
+  ell(x, y + 3 * u, 3.2 * u, 2.6 * u, 0, '#4b3312');
+  ell(x, y + 8 * u, 11 * u, 3 * u, 0, 'rgba(0,0,0,0.22)');
+  if (lv > 0){
+    for (var b = 0; b < 3; b++){
+      var a = t * 1.2 + b * 2.1;
+      var bx = x + Math.cos(a) * 15 * u, by = y - 6 * u + Math.sin(a * 1.3) * 8 * u;
+      ell(bx, by, 3 * u, 2.1 * u, a * 0.3, '#ffd23f', '#7a5410', 0.9 * u);
+      line(bx - 1.2 * u, by - 1.6 * u, bx - 1.2 * u, by + 1.6 * u, '#3a2a08', 1 * u);
+      line(bx + 1.1 * u, by - 1.5 * u, bx + 1.1 * u, by + 1.5 * u, '#3a2a08', 1 * u);
+      ell(bx - 1 * u, by - 2.6 * u, 2.2 * u, 1.2 * u, -0.4, 'rgba(220,245,255,0.65)');
+      ell(bx + 1 * u, by - 2.6 * u, 2.2 * u, 1.2 * u, 0.4, 'rgba(220,245,255,0.65)');
+    }
+  }
+}
+function iconPond(x, y, s, t, lv){
+  var u = s / 30;
+  ell(x, y + 4 * u, 17 * u, 8 * u, 0, '#1b6f8c', '#2c93b4', 1.4 * u);
+  var g = ctx.createLinearGradient(x, y - 3 * u, x, y + 11 * u);
+  g.addColorStop(0, '#48c7e8'); g.addColorStop(1, '#155c78');
+  ell(x, y + 4 * u, 15 * u, 6.6 * u, 0, g);
+  for (var i = 0; i < 2; i++){
+    var p = fract(t * 0.42 + i * 0.5);
+    ell(x - 3 * u + i * 7 * u, y + 5 * u, 3 * u + p * 9 * u, (1.2 + p * 3.6) * u, 0, null, alpha('#bfefff', 0.5 * (1 - p)), 1.1 * u);
+  }
+  if (lv > 0){
+    var fx = x + Math.sin(t * 0.9) * 9 * u, fy = y + 5 * u + Math.cos(t * 1.3) * 2 * u;
+    ell(fx, fy, 5 * u, 2.6 * u, 0, '#ffd23f', '#8a6318', 1 * u);
+    poly([[fx - 5 * u, fy], [fx - 8.4 * u, fy - 3 * u], [fx - 8.4 * u, fy + 3 * u]], '#ffb02e', '#8a6318', 0.9 * u);
+    ell(fx + 2.4 * u, fy - 0.6 * u, 0.8 * u, 0.8 * u, 0, '#2a1c06');
+  }
+  ell(x - 11 * u, y + 1 * u, 5 * u, 2.4 * u, -0.3, '#43b055', '#20622c', 1 * u);
+  ell(x + 11 * u, y + 7 * u, 4 * u, 1.9 * u, 0.25, '#3f9c4c', '#20622c', 1 * u);
+}
+var FAC_ICON = [iconSprinkler, iconWindmill, iconScarecrow, iconHive, iconPond];
+
+/* =========================================================================
+   模块 9 / 游戏逻辑
+   ========================================================================= */
+function plant(idx, silent){
+  var t = state.tiles[idx];
+  if (!t) return false;
+  if (t.crop >= 0) return false;
+  var ci = clamp(state.sel, 0, CROPS.length - 1);
+  var c = CROPS[ci];
+  if (!isUnlocked(ci)){
+    if (!silent){ showToast('未解锁：需累计金币 ' + fmtNum(c.unlock), C.danger); audio.sfx('error'); }
+    return false;
+  }
+  if (state.coins < c.cost){
+    if (!silent){ showToast('金币不足，需要 ' + fmtInt(c.cost), C.danger); audio.sfx('error'); shakeAmt = Math.max(shakeAmt, 4); }
+    return false;
+  }
+  state.coins -= c.cost;
+  state.planted++;
+  t.crop = ci; t.growth = 0; t.pest = false;
+  if (!silent){
+    var p = tileCenter(idx % state.size, Math.floor(idx / state.size));
+    addFloat(p.x, p.y - geomCache.tw * 0.2, '-' + fmtInt(c.cost), C.dim, 13);
+    for (var i = 0; i < 5; i++) addParticle(p.x, p.y, (Math.random() - 0.5) * 60, -40 - Math.random() * 60, 0.55, CATS[c.cat].color, 2.6, 'spark');
+    audio.sfx('plant');
+  }
+  return true;
+}
+function speedUp(idx){
+  var t = state.tiles[idx];
+  if (!t || t.crop < 0) return;
+  var total = growTimeOf(t.crop);
+  t.growth = Math.min(total, t.growth + total * 0.22);
+  var p = tileCenter(idx % state.size, Math.floor(idx / state.size));
+  addFloat(p.x, p.y - geomCache.tw * 0.35, '加速 +22%', C.cyan, 13);
+  for (var i = 0; i < 5; i++) addParticle(p.x, p.y - geomCache.tw * 0.2, (Math.random() - 0.5) * 70, -50 - Math.random() * 50, 0.5, C.cyan, 2.4, 'spark');
+  audio.sfx('boost');
+}
+function clearPest(idx){
+  var t = state.tiles[idx];
+  if (!t || !t.pest) return;
+  t.pest = false;
+  var p = tileCenter(idx % state.size, Math.floor(idx / state.size));
+  addFloat(p.x, p.y - geomCache.tw * 0.3, '除虫成功', C.green, 13);
+  for (var i = 0; i < 6; i++) addParticle(p.x, p.y - geomCache.tw * 0.15, (Math.random() - 0.5) * 90, -60 - Math.random() * 60, 0.55, C.green, 2.4, 'spark');
+  audio.sfx('pest');
+}
+function harvest(idx, auto){
+  var t = state.tiles[idx];
+  if (!t || t.crop < 0) return 0;
+  var ci = clamp(t.crop, 0, CROPS.length - 1);
+  var c = CROPS[ci];
+  if (t.growth < growTimeOf(ci)) return 0;
+  var price = priceOf(ci);
+  state.coins += price;
+  state.total += price;
+  state.harvest++;
+  state.exp += price / 2;
+  var p = tileCenter(idx % state.size, Math.floor(idx / state.size));
+  addFloat(p.x, p.y - geomCache.tw * 0.42, '+' + fmtInt(price), C.gold, 16);
+  for (var i = 0; i < 10; i++){
+    addParticle(p.x + (Math.random() - 0.5) * geomCache.tw * 0.2, p.y - geomCache.tw * 0.12,
+      (Math.random() - 0.5) * 110, -70 - Math.random() * 90, 0.75 + Math.random() * 0.35,
+      i % 3 === 0 ? C.gold : c.col, 2.4 + Math.random() * 2, i % 4 === 0 ? 'coin' : 'spark');
+  }
+  t.crop = -1; t.growth = 0; t.pest = false; t.seed = Math.random() * 100;
+  if (!auto) audio.sfx('harvest');
+  flashA = Math.max(flashA, 0.16); flashCol = c.col;
+  while (state.exp >= expNeed(state.level)){
+    state.exp -= expNeed(state.level);
+    state.level++;
+    showToast('升级！等级 ' + state.level + ' · 全体收益 +3%', C.gold);
+    audio.sfx('level');
+    flashA = 0.32; flashCol = C.gold;
+    shakeAmt = Math.max(shakeAmt, 5);
+  }
+  return price;
+}
+function upgradeFacility(i){
+  i = clamp(Math.round(num(i, 0)), 0, 4);
+  var lv = state.fac[i];
+  if (lv >= 3){ showToast(FAC[i].name + ' 已满级', C.dim); audio.sfx('click'); return; }
+  var price = num(FAC[i].prices[lv], 0);
+  if (state.coins < price){
+    showToast('金币不足，升级 ' + FAC[i].name + ' 需要 ' + fmtInt(price), C.danger);
+    audio.sfx('error'); shakeAmt = Math.max(shakeAmt, 4);
+    return;
+  }
+  state.coins -= price;
+  state.fac[i] = lv + 1;
+  showToast(FAC[i].name + ' 升至 Lv.' + (lv + 1) + ' · ' + FAC[i].unit + '提升', FAC[i].color);
+  audio.sfx('level');
+  flashA = Math.max(flashA, 0.2); flashCol = FAC[i].color;
+  saveGame();
+}
+function expandFarm(){
+  if (state.size >= 6){ showToast('农田已达上限 36 格', C.dim); audio.sfx('click'); return; }
+  var cost = state.size === 4 ? 350 : 900;
+  if (state.coins < cost){ showToast('金币不足，扩建需要 ' + fmtInt(cost), C.danger); audio.sfx('error'); shakeAmt = Math.max(shakeAmt, 4); return; }
+  state.coins -= cost;
+  var old = state.tiles, oldN = state.size;
+  state.size = state.size + 1;
+  var next = makeTiles(state.size);
+  for (var r = 0; r < oldN; r++) for (var c = 0; c < oldN; c++) next[r * state.size + c] = old[r * oldN + c];
+  state.tiles = next;
+  showToast('农田扩建为 ' + state.size + '×' + state.size, C.lime);
+  audio.sfx('level');
+  computeGeom();
+  saveGame();
+}
+function tileClick(idx){
+  var t = state.tiles[idx];
+  if (!t) return;
+  if (t.crop < 0){ plant(idx); return; }
+  if (t.pest){ clearPest(idx); return; }
+  if (t.growth >= growTimeOf(t.crop)) harvest(idx, false);
+  else speedUp(idx);
+}
+function offlineRate(){
+  return (0.25 + state.fac[2] * 0.55 + state.fac[4] * 0.9) * buffSpr() * (1 + state.level * 0.03 + unlockedCount() * 0.05);
+}
+
+/* =========================================================================
+   模块 10 / 渲染
+   ========================================================================= */
+var T = 0, hoverId = null, hoverTile = -1;
+function hit(id, x, y, w, h, data){
+  x = num(x); y = num(y); w = Math.max(1, num(w, 1)); h = Math.max(1, num(h, 1));
+  if (!isFinite(x) || !isFinite(y)) return;
+  lay.hits.push({ id: id, x: x, y: y, w: w, h: h, data: data });
+}
+function drawBackground(){
+  var W = view.w, H = view.h;
+  ctx.fillStyle = C.bg; ctx.fillRect(0, 0, W, H);
+  var gx = W * (0.32 + 0.06 * Math.sin(T * 0.13));
+  var gy = H * (0.34 + 0.05 * Math.cos(T * 0.11));
+  var g = ctx.createRadialGradient(gx, gy, 10, gx, gy, Math.max(W, H) * 0.75);
+  g.addColorStop(0, 'rgba(67,217,255,0.075)');
+  g.addColorStop(0.45, 'rgba(197,107,255,0.035)');
+  g.addColorStop(1, 'rgba(7,9,15,0)');
+  ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+  ctx.save();
+  ctx.globalAlpha = 0.055; ctx.strokeStyle = '#43d9ff'; ctx.lineWidth = 1;
+  for (var x = -H; x < W + H; x += 46){
+    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x + H, H); ctx.stroke();
+  }
+  ctx.restore();
+}
+function drawTopBar(){
+  var R = lay.top;
+  panelBox(R.x, R.y, R.w, R.h, C.cyan, null, 10);
+  if (!lay.portrait){
+    var cx = R.x + 18, cy = R.y + R.h / 2;
+    poly([[cx, cy - 15], [cx + 16, cy - 6], [cx, cy + 3], [cx - 16, cy - 6]], '#12283c', C.cyan, 1.4);
+    ell(cx, cy - 7, 4.6, 4.6, 0, C.lime, '#2f7a34', 1);
+    line(cx, cy - 3, cx, cy - 11, '#7bd88a', 1.6);
+    text('方块农场', cx + 26, cy - 6, 20, C.text, 'left', 800);
+    text('BLOCK FARM', cx + 27, cy + 11, 9, C.dim, 'left', 700, false, 2.4);
+    var x0 = R.x + R.w * 0.30;
+    drawCoinIcon(x0, cy - 2, 9);
+    text(fmtNum(state.coins), x0 + 15, cy - 2, 19, C.gold, 'left', 700, true);
+    text('金币', x0 + 15, cy + 15, 9, C.dim, 'left', 600, false, 1.5);
+    var x1 = R.x + R.w * 0.50;
+    text('LV.' + state.level, x1, cy - 4, 18, C.lime, 'left', 800, true);
+    text('等级', x1, cy + 14, 9, C.dim, 'left', 600, false, 1.5);
+    var x2 = R.x + R.w * 0.60;
+    text('累计 ' + fmtNum(state.total), x2, cy - 4, 12, C.text, 'left', 600, true);
+    text('收获 ' + fmtNum(state.harvest), x2, cy + 13, 12, C.dim, 'left', 600, true);
+    var bx = R.x + R.w - 230, bw = 210, by = cy - 12;
+    text('EXP', bx, by - 11, 9, C.dim, 'left', 700, false, 1.6);
+    chamferPath(bx, by, bw, 12, 3); ctx.fillStyle = '#0a1220'; ctx.fill();
+    ctx.strokeStyle = C.line; ctx.lineWidth = 1; ctx.stroke();
+    var need = expNeed(state.level);
+    var prog = clamp(state.exp / Math.max(1, need), 0, 1);
+    if (prog > 0.001){
+      chamferPath(bx + 1, by + 1, Math.max(2, (bw - 2) * prog), 10, 2);
+      var g = ctx.createLinearGradient(bx, by, bx + bw, by);
+      g.addColorStop(0, C.cyan); g.addColorStop(1, C.purple);
+      ctx.fillStyle = g; ctx.fill();
+    }
+    text(Math.floor(state.exp) + ' / ' + need, bx + bw / 2, by + 6, 9, C.text, 'center', 700, true);
+    return;
+  }
+  var cards = [
+    { t: '金币', v: fmtNum(state.coins), c: C.gold },
+    { t: '等级', v: 'LV.' + state.level, c: C.lime },
+    { t: '经验', v: Math.floor(state.exp) + '/' + expNeed(state.level), c: C.cyan },
+    { t: '累计金币', v: fmtNum(state.total), c: C.gold },
+    { t: '收获次数', v: fmtNum(state.harvest), c: C.green },
+    { t: '已播种', v: fmtNum(state.planted), c: C.purple }
+  ];
+  var cols = 3, rows = 2, gap = 6;
+  var cw = (R.w - gap * (cols - 1)) / cols, ch = (R.h - gap * (rows - 1)) / rows;
+  for (var i = 0; i < cards.length; i++){
+    var cxx = R.x + (i % cols) * (cw + gap), cyy = R.y + Math.floor(i / cols) * (ch + gap);
+    chamferPath(cxx, cyy, cw, ch, 5);
+    ctx.fillStyle = alpha(cards[i].c, 0.08); ctx.fill();
+    ctx.strokeStyle = alpha(cards[i].c, 0.35); ctx.lineWidth = 1; ctx.stroke();
+    text(cards[i].t, cxx + 8, cyy + ch * 0.32, 9, C.dim, 'left', 700, false, 1.2);
+    text(cards[i].v, cxx + 8, cyy + ch * 0.68, Math.min(16, ch * 0.34), cards[i].c, 'left', 800, true);
+    if (i === 2){
+      var pr = clamp(state.exp / Math.max(1, expNeed(state.level)), 0, 1);
+      ctx.fillStyle = alpha(C.cyan, 0.28);
+      ctx.fillRect(cxx + 8, cyy + ch - 4, Math.max(1, (cw - 16) * pr), 2);
+    }
+  }
+}
+function drawCategoryTabs(R, vertical){
+  for (var i = 0; i < 4; i++){
+    var cat = CATS[i];
+    var x, y, w, h;
+    if (vertical){ x = R.x + 10; w = R.w - 20; h = 42; y = R.y + i * (h + 6); }
+    else { w = (R.w - 18) / 4; h = R.h; x = R.x + i * (w + 6); y = R.y; }
+    var active = state.cat === i;
+    chamferPath(x, y, w, h, 5);
+    ctx.fillStyle = active ? alpha(cat.color, 0.16) : '#0d1727'; ctx.fill();
+    ctx.strokeStyle = active ? cat.color : C.lineSoft; ctx.lineWidth = active ? 1.6 : 1; ctx.stroke();
+    chamferPath(x, y, 3.5, h, 1.5); ctx.fillStyle = cat.color; ctx.fill();
+    var cnt = 0;
+    for (var k = 0; k < CROPS.length; k++) if (CROPS[k].cat === i && isUnlocked(k)) cnt++;
+    if (vertical){
+      text(cat.name, x + 12, y + 13, 12, active ? C.text : C.dim, 'left', 700);
+      text(cat.note, x + 12, y + 29, 9.5, active ? alpha(cat.color, 0.95) : C.dim, 'left', 600);
+      text(cnt + '/3', x + w - 12, y + 21, 11, active ? cat.color : C.dim, 'right', 700, true);
+    } else {
+      text(cat.short, x + w / 2, y + h * 0.34, 13, active ? C.text : C.dim, 'center', 800);
+      text(cnt + '/3', x + w / 2, y + h * 0.72, 10, active ? cat.color : C.dim, 'center', 700, true);
+    }
+    hit('tab:' + i, x, y, w, h, i);
+  }
+}
+/* --- 作物卡：含未解锁挂锁展示 --- */
+function drawCropCard(i, x, y, w, h){
+  var c = CROPS[i];
+  var unlocked = isUnlocked(i);
+  var selected = state.sel === i;
+  var cat = CATS[c.cat];
+  chamferPath(x, y, w, h, 6);
+  ctx.fillStyle = selected ? alpha(cat.color, 0.15) : '#0c1626'; ctx.fill();
+  ctx.strokeStyle = selected ? cat.color : (unlocked ? C.lineSoft : alpha(C.gold, 0.32));
+  ctx.lineWidth = selected ? 1.7 : 1; ctx.stroke();
+  if (selected){ chamferPath(x, y, 3, h, 1.5); ctx.fillStyle = cat.color; ctx.fill(); }
+
+  var compact = w > h * 1.2;
+  var ix, iy, s;
+  if (compact){ ix = x + 30; iy = y + h - 13; s = Math.min(40, h * 0.52); }
+  else { ix = x + w / 2; iy = y + h * 0.50; s = Math.min(w * 0.44, h * 0.38); }
+
+  /* ★ 图标区裁剪：预览绝不越出卡片，杜绝跨卡串层 */
+  ctx.save();
+  chamferPath(x + 1, y + 1, Math.max(1, w - 2), Math.max(1, h - 2), 6);
+  ctx.clip();
+  ell(ix, iy + 2, s * 0.52, s * 0.17, 0, 'rgba(0,0,0,0.38)');
+  drawCrop(i, ix, iy, s, unlocked ? 3 : 0, T, i * 1.7);
+  if (!unlocked){
+    ctx.fillStyle = 'rgba(6,10,18,0.62)';
+    ctx.fillRect(x, y, w, h);
+    drawLock(ix, iy - s * 0.42, Math.min(28, Math.max(16, s * 0.95)), C.gold);
+  }
+  ctx.restore();
+
+  var dimCol = unlocked ? C.text : C.dim;
+  var tx = compact ? x + 58 : x + w / 2;
+  if (compact){
+    text(c.name, tx, y + 14, 13, dimCol, 'left', 800);
+    text('成本 ' + fmtInt(c.cost), tx, y + 33, 10, unlocked ? C.gold : C.dim, 'left', 600, true);
+    text('时 ' + c.time + 's', tx + 70, y + 33, 10, unlocked ? C.cyan : C.dim, 'left', 600, true);
+    text('售 ' + fmtInt(c.price), tx + 132, y + 33, 10, unlocked ? C.green : C.dim, 'left', 600, true);
+    var barX = tx, barW = Math.max(20, w - 74);
+    if (!unlocked){
+      var pr = clamp(state.total / Math.max(1, c.unlock), 0, 1);
+      ctx.fillStyle = '#0a1220'; ctx.fillRect(barX, y + h - 15, barW, 5);
+      ctx.fillStyle = C.gold; ctx.fillRect(barX, y + h - 15, Math.max(1, barW * pr), 5);
+      ctx.strokeStyle = alpha(C.gold, 0.4); ctx.lineWidth = 1; ctx.strokeRect(barX + 0.5, y + h - 14.5, barW - 1, 4);
+      text('需累计 ' + fmtNum(state.total) + ' / ' + fmtNum(c.unlock), barX, y + h - 24, 8.5, C.gold, 'left', 600, true);
+    } else {
+      text('实际售 ' + fmtInt(priceOf(i)) + ' · ' + growTimeOf(i).toFixed(1) + 's', barX, y + h - 12, 9, C.dim, 'left', 600, true);
+    }
+  } else {
+    text(c.name, tx, y + h * 0.63, 13, dimCol, 'center', 800);
+    if (!unlocked){
+      var pr2 = clamp(state.total / Math.max(1, c.unlock), 0, 1);
+      var bw2 = w - 24;
+      ctx.fillStyle = '#0a1220'; ctx.fillRect(x + 12, y + h * 0.70, bw2, 5);
+      ctx.fillStyle = C.gold; ctx.fillRect(x + 12, y + h * 0.70, Math.max(1, bw2 * pr2), 5);
+      ctx.strokeStyle = alpha(C.gold, 0.4); ctx.lineWidth = 1; ctx.strokeRect(x + 12.5, y + h * 0.70 + 0.5, bw2 - 1, 4);
+      text('需累计 ' + fmtNum(state.total) + ' / ' + fmtNum(c.unlock), tx, y + h * 0.70 + 14, 8.5, C.gold, 'center', 600, true);
+    }
+    var rows = [
+      ['成本', fmtInt(c.cost), unlocked ? C.gold : C.dim],
+      ['生长', c.time + 's', unlocked ? C.cyan : C.dim],
+      ['售价', fmtInt(c.price), unlocked ? C.green : C.dim]
+    ];
+    for (var r = 0; r < rows.length; r++){
+      var ry = y + h * (unlocked ? 0.76 : 0.86) + r * Math.min(13, h * 0.055);
+      if (!unlocked && r > 1) break;
+      text(rows[r][0], x + 12, ry, 9, C.dim, 'left', 600);
+      text(rows[r][1], x + w - 12, ry, 9.5, rows[r][2], 'right', 700, true);
+    }
+    if (unlocked){
+      text('实际 ' + fmtInt(priceOf(i)) + '金 / ' + growTimeOf(i).toFixed(1) + 's', tx, y + h * 0.63 + 15, 8.5, C.dim, 'center', 600, true);
+    }
+  }
+  hit('crop:' + i, x, y, w, h, i);
+}
+function drawShop(){
+  if (!lay.portrait){
+    var R = lay.left;
+    panelBox(R.x, R.y, R.w, R.h, C.gold, '农田商店 FARM SHOP', 10);
+    var tabs = { x: R.x + 6, y: R.y + 30, w: R.w - 12, h: 42 * 4 + 18 };
+    drawCategoryTabs(tabs, true);
+    var cy = tabs.y + tabs.h + 10;
+    var ch = Math.max(70, (R.y + R.h - 10 - cy) / 3 - 6);
+    for (var i = 0; i < 3; i++) drawCropCard(state.cat * 3 + i, R.x + 10, cy + i * (ch + 6), R.w - 20, ch);
+  } else {
+    drawCategoryTabs(lay.tabs, false);
+    var R2 = lay.cards, gap = 6, cw = (R2.w - gap * 2) / 3;
+    for (var k = 0; k < 3; k++) drawCropCard(state.cat * 3 + k, R2.x + k * (cw + gap), R2.y, cw, R2.h);
+  }
+}
+/* --- 田地：两遍绘制，先地块后作物，杜绝遮挡 --- */
+function drawField(){
+  var g = geomCache, N = g.N, tw = g.tw, th = g.th, F = lay.field;
+  /* 扩建按钮 */
+  if (state.size < 6){
+    var cost = state.size === 4 ? 350 : 900;
+    var bw = 128, bh = 28, bx = F.x + F.w - bw - 2, by = F.y + 2;
+    chamferPath(bx, by, bw, bh, 5);
+    ctx.fillStyle = alpha(C.lime, state.coins >= cost ? 0.16 : 0.07); ctx.fill();
+    ctx.strokeStyle = state.coins >= cost ? C.lime : C.lineSoft; ctx.lineWidth = 1.2; ctx.stroke();
+    text('扩建 ' + (state.size + 1) + '×' + (state.size + 1), bx + 10, by + bh / 2, 11, state.coins >= cost ? C.lime : C.dim, 'left', 700);
+    drawCoinIcon(bx + bw - 44, by + bh / 2, 6);
+    text(fmtInt(cost), bx + bw - 10, by + bh / 2, 11, C.gold, 'right', 700, true);
+    hit('btn:expand', bx, by, bw, bh);
+  } else {
+    text('农田已达上限 36 格', F.x + F.w - 8, F.y + 16, 10, C.dim, 'right', 600);
+  }
+  /* ---- 第一遍：全部地块（体 + 顶面 + 高亮） ---- */
+  var depth = Math.max(2.5, tw * 0.085);
+  var s, c, r, idx, tile, p, x, y;
+  for (s = 0; s <= 2 * (N - 1); s++){
+    for (c = 0; c < N; c++){
+      r = s - c;
+      if (r < 0 || r >= N) continue;
+      idx = r * N + c;
+      tile = state.tiles[idx];
+      if (!tile) continue;
+      p = tileCenter(c, r);
+      x = num(p.x); y = num(p.y);
+      if (!isFinite(x) || !isFinite(y)) continue;
+      tilePath(x, y + depth, tw);
+      ctx.fillStyle = '#0a1220'; ctx.fill();
+      tilePath(x, y, tw);
+      var grad = ctx.createLinearGradient(x - tw / 2, y - th, x + tw / 2, y + th);
+      var v = hash1(num(tile.seed) * 7.31) * 0.05;
+      grad.addColorStop(0, alpha('#2a4061', 0.55 + v));
+      grad.addColorStop(1, alpha('#0d1727', 1));
+      ctx.fillStyle = grad; ctx.fill();
+      var isHover = (hoverTile === idx && !state.modal);
+      ctx.strokeStyle = isHover ? C.cyan : C.line;
+      ctx.lineWidth = isHover ? 1.9 : 1.1;
+      ctx.stroke();
+      line(x - tw / 2, y, x, y - th, 'rgba(255,255,255,0.055)', 1);
+    }
+  }
+  /* ---- 第二遍：作物 / 害虫 / 闪光（同样由后向前） ---- */
+  for (s = 0; s <= 2 * (N - 1); s++){
+    for (c = 0; c < N; c++){
+      r = s - c;
+      if (r < 0 || r >= N) continue;
+      idx = r * N + c;
+      tile = state.tiles[idx];
+      if (!tile) continue;
+      p = tileCenter(c, r);
+      x = num(p.x); y = num(p.y);
+      if (!isFinite(x) || !isFinite(y)) continue;
+      if (tile.crop >= 0){
+        var ci = clamp(tile.crop, 0, CROPS.length - 1);
+        var stage = stageOf(tile.growth, growTimeOf(ci));
+        ell(x, y + th * 0.13, Math.max(1, tw * 0.2), Math.max(1, tw * 0.076), 0, 'rgba(0,0,0,0.42)');
+        drawCrop(ci, x, y + th * 0.02, Math.max(6, tw * 0.6), stage, T, num(tile.seed) * 6.28);
+        if (stage === 3){
+          drawSparkle(x, y - tw * 0.24, num(tile.seed) * 1.7, T, tw, CROPS[ci].col);
+          ctx.save();
+          ctx.globalAlpha = 0.22 + 0.1 * Math.sin(T * 2.4 + num(tile.seed));
+          tilePath(x, y, tw);
+          ctx.strokeStyle = CROPS[ci].col; ctx.lineWidth = 2.2; ctx.stroke();
+          ctx.restore();
+        }
+      }
+      if (tile.pest) drawPest(x, y - th * 0.26, tw * 1.05, T, tile.seed);
+    }
+  }
+}
+function drawFacilityBand(){
+  var R = lay.fac;
+  panelBox(R.x, R.y, R.w, R.h, C.purple, '设施区 FACILITIES', 10);
+  var gap = lay.portrait ? 5 : 8;
+  var top = R.y + (lay.portrait ? 22 : 30);
+  var sw = (R.w - 20 - gap * 4) / 5;
+  for (var i = 0; i < 5; i++){
+    var f = FAC[i], lv = state.fac[i];
+    var x = R.x + 10 + i * (sw + gap), y = top, w = sw, h = R.h - (top - R.y) - 10;
+    chamferPath(x, y, w, h, 6);
+    ctx.fillStyle = lv > 0 ? alpha(f.color, 0.09) : '#0b1424'; ctx.fill();
+    ctx.strokeStyle = lv > 0 ? alpha(f.color, 0.45) : C.lineSoft; ctx.lineWidth = 1; ctx.stroke();
+    var pw = Math.min(w * 0.72, 78), pcx = x + w / 2, pcy = y + h * 0.72, phh = pw / 4;
+    poly([[pcx, pcy - phh], [pcx + pw / 2, pcy], [pcx, pcy + phh], [pcx - pw / 2, pcy]], '#16253c', '#2b3d58', 1);
+    poly([[pcx - pw / 2, pcy], [pcx, pcy + phh], [pcx, pcy + phh + 7], [pcx - pw / 2, pcy + 7]], '#0c1626', '#223147', 1);
+    poly([[pcx + pw / 2, pcy], [pcx, pcy + phh], [pcx, pcy + phh + 7], [pcx + pw / 2, pcy + 7]], '#101d30', '#223147', 1);
+    FAC_ICON[i](pcx, pcy - h * 0.24, Math.min(pw * 0.66, 46), T, lv);
+    for (var k = 0; k < 3; k++) drawStar(x + w / 2 + (k - 1) * 13, y + h * 0.86, 5, k < lv ? C.gold : '#223147', k < lv ? 1 : 0.85);
+    text(f.name, x + w / 2, y + 10, lay.portrait ? 10 : 11.5, C.text, 'center', 800);
+    if (lv < 3){
+      var price = f.prices[lv], can = state.coins >= price, by = y + h - 15;
+      chamferPath(x + 8, by, w - 16, 15, 3);
+      ctx.fillStyle = can ? alpha(f.color, 0.18) : 'rgba(255,91,110,0.10)'; ctx.fill();
+      ctx.strokeStyle = can ? alpha(f.color, 0.6) : alpha(C.danger, 0.5); ctx.lineWidth = 1; ctx.stroke();
+      text('升级 ' + fmtInt(price), x + w / 2, by + 8, 9.5, can ? f.color : C.danger, 'center', 700, true);
+    } else {
+      text('已满级', x + w / 2, y + h - 8, 9.5, C.dim, 'center', 700);
+    }
+    if (lv > 0){
+      var desc = f.unit + ' ';
+      if (i === 0) desc += '×' + f.vals[lv - 1].toFixed(2);
+      else if (i === 1) desc += '+' + Math.round((f.vals[lv - 1] - 1) * 100) + '%';
+      else if (i === 2) desc += f.vals[lv - 1].toFixed(1) + 's/株';
+      else if (i === 3) desc += f.vals[lv - 1] + 's/次';
+      else desc += f.vals[lv - 1] + '金/' + f.ivals[lv - 1] + 's';
+      text(desc, x + w / 2, y + 24, 8.5, alpha(f.color, 0.85), 'center', 600, true);
+    } else {
+      text(f.unit + ' 未建造', x + w / 2, y + 24, 8.5, C.dim, 'center', 600);
+    }
+    hit('fac:' + i, x, y, w, h, i);
+  }
+}
+function drawSide(){
+  if (!lay.portrait){
+    var R = lay.right;
+    panelBox(R.x, R.y, R.w, R.h, C.green, '增益状态 BUFFS', 10);
+    var y = R.y + 34;
+    var items = [
+      ['生长倍率', '×' + buffSpr().toFixed(2), buffSpr() > 1 ? C.cyan : C.dim],
+      ['售价倍率', '×' + (buffWind() * CATS[state.cat].price).toFixed(2), buffWind() > 1 ? C.lime : C.dim],
+      ['害虫概率', '8%', C.danger],
+      ['自动收获', state.fac[2] > 0 ? FAC[2].vals[state.fac[2] - 1].toFixed(1) + 's / 株' : '未建造', state.fac[2] > 0 ? C.gold : C.dim],
+      ['自动除虫', state.fac[3] > 0 ? FAC[3].vals[state.fac[3] - 1] + 's / 次' : '未建造', state.fac[3] > 0 ? C.gold : C.dim],
+      ['定期收益', state.fac[4] > 0 ? FAC[4].vals[state.fac[4] - 1] + '金 / ' + FAC[4].ivals[state.fac[4] - 1] + 's' : '未建造', state.fac[4] > 0 ? C.cyan : C.dim]
+    ];
+    for (var i = 0; i < items.length; i++){
+      var yy = y + i * 22;
+      chamferPath(R.x + 12, yy - 9, R.w - 24, 19, 3);
+      ctx.fillStyle = alpha(items[i][2], 0.07); ctx.fill();
+      ctx.strokeStyle = C.lineSoft; ctx.lineWidth = 1; ctx.stroke();
+      text(items[i][0], R.x + 22, yy, 10.5, C.dim, 'left', 600);
+      text(items[i][1], R.x + R.w - 22, yy, 11, items[i][2], 'right', 700, true);
+    }
+    var sy = y + items.length * 22 + 12;
+    text('统计 STATS', R.x + 14, sy, 10, C.dim, 'left', 700, false, 1.6);
+    var stats = [['已播种', fmtInt(state.planted)], ['累计金币', fmtInt(state.total)], ['收获次数', fmtInt(state.harvest)]];
+    for (var k = 0; k < stats.length; k++){
+      var yy2 = sy + 22 + k * 21;
+      text(stats[k][0], R.x + 22, yy2, 10.5, C.dim, 'left', 600);
+      text(stats[k][1], R.x + R.w - 22, yy2, 12, C.text, 'right', 700, true);
+    }
+    var by = R.y + R.h - 46, bw = (R.w - 32) / 3, gap = 8;
+    var labels = [['声音', audio.on ? '开' : '关'], ['暂停', state.paused ? '继续' : '暂停'], ['重开', state.confirmReset > 0 ? '确认?' : '重开']];
+    var cols = [C.cyan, C.lime, C.danger];
+    for (var b = 0; b < 3; b++){
+      var bx = R.x + 12 + b * (bw + gap);
+      chamferPath(bx, by, bw, 34, 5);
+      var act = (b === 0 && audio.on) || (b === 1 && state.paused) || (b === 2 && state.confirmReset > 0);
+      ctx.fillStyle = act ? alpha(cols[b], 0.2) : '#0f1a2c'; ctx.fill();
+      ctx.strokeStyle = act ? cols[b] : C.line; ctx.lineWidth = 1.2; ctx.stroke();
+      text(labels[b][0], bx + bw / 2, by + 11, 10, C.dim, 'center', 700);
+      text(labels[b][1], bx + bw / 2, by + 24, 11, cols[b], 'center', 800);
+      hit('btn:' + b, bx, by, bw, 34);
+    }
+  } else {
+    var R2 = lay.btns, gap2 = 6, bw2 = (R2.w - gap2 * 3) / 4;
+    var items2 = [
+      ['声音', audio.on ? '开' : '关', C.cyan],
+      ['暂停', state.paused ? '继续' : '暂停', C.lime],
+      ['重开', state.confirmReset > 0 ? '确认?' : '重开', C.danger],
+      ['扩建', state.size >= 6 ? '已满' : (state.size === 4 ? '350' : '900'), C.gold]
+    ];
+    for (var m = 0; m < 4; m++){
+      var mx = R2.x + m * (bw2 + gap2);
+      chamferPath(mx, R2.y, bw2, R2.h, 5);
+      var act2 = (m === 0 && audio.on) || (m === 1 && state.paused) || (m === 2 && state.confirmReset > 0);
+      ctx.fillStyle = act2 ? alpha(items2[m][2], 0.2) : '#0f1a2c'; ctx.fill();
+      ctx.strokeStyle = act2 ? items2[m][2] : C.line; ctx.lineWidth = 1.2; ctx.stroke();
+      text(items2[m][0], mx + bw2 / 2, R2.y + R2.h * 0.32, 10, C.dim, 'center', 700);
+      text(items2[m][1], mx + bw2 / 2, R2.y + R2.h * 0.68, 11.5, items2[m][2], 'center', 800);
+      if (m < 3) hit('btn:' + m, mx, R2.y, bw2, R2.h);
+      else hit('btn:expand2', mx, R2.y, bw2, R2.h);
+    }
+  }
+}
+function drawHint(){
+  var R = lay.hint;
+  chamferPath(R.x, R.y, R.w, R.h, 4);
+  ctx.fillStyle = alpha('#122238', 0.6); ctx.fill();
+  ctx.strokeStyle = C.lineSoft; ctx.lineWidth = 1; ctx.stroke();
+  text('点空地播种 · 点幼苗加速 · 点成熟收获 · 点害虫除虫 · 长按空地连续播种 · 点设施升级 · 带锁作物需累计金币解锁 · 离线收益上限 8 小时',
+    R.x + R.w / 2, R.y + R.h / 2, lay.portrait ? 8.5 : 10.5, C.dim, 'center', 600);
+}
+function drawEffects(){
+  var i;
+  for (i = 0; i < particles.length; i++){
+    var p = particles[i];
+    var a = clamp(p.life / Math.max(0.05, p.max), 0, 1);
+    ctx.save(); ctx.globalAlpha = a;
+    if (p.kind === 'coin') drawCoinIcon(p.x, p.y, Math.max(1.2, p.size));
+    else {
+      var s2 = Math.max(1, p.size);
+      poly([[p.x, p.y - s2], [p.x + s2 * 0.7, p.y], [p.x, p.y + s2], [p.x - s2 * 0.7, p.y]], p.col);
+    }
+    ctx.restore();
+  }
+  for (i = 0; i < floaters.length; i++){
+    var f = floaters[i];
+    ctx.save(); ctx.globalAlpha = clamp(f.life / Math.max(0.05, f.max), 0, 1);
+    text(f.txt, f.x, f.y, f.size, f.col, 'center', 800, true);
+    ctx.restore();
+  }
+}
+function drawToast(){
+  if (!state.toast) return;
+  var t = state.toast;
+  var a = clamp(t.t / 0.5, 0, 1);
+  var w = Math.min(view.w * 0.86, 70 + t.txt.length * 15);
+  var x = view.w / 2 - w / 2, y = (lay.top ? lay.top.y + lay.top.h + 14 : 20);
+  ctx.save(); ctx.globalAlpha = a;
+  chamferPath(x, y, w, 32, 6);
+  ctx.fillStyle = alpha(t.col, 0.14); ctx.fill();
+  ctx.strokeStyle = t.col; ctx.lineWidth = 1.3; ctx.stroke();
+  text(t.txt, x + w / 2, y + 16, 12.5, C.text, 'center', 700);
+  ctx.restore();
+}
+function drawModal(){
+  if (!state.modal) return;
+  var W = view.w, H = view.h;
+  ctx.save();
+  ctx.fillStyle = 'rgba(4,6,11,0.72)'; ctx.fillRect(0, 0, W, H);
+  var m = state.modal;
+  var pw = Math.min(420, W * 0.86), ph = 216;
+  var x = W / 2 - pw / 2, y = H / 2 - ph / 2;
+  panelBox(x, y, pw, ph, C.gold, null, 12);
+  if (m.type === 'offline'){
+    text('欢迎回来', x + pw / 2, y + 32, 19, C.text, 'center', 800);
+    text('离线时长 ' + fmtTime(m.secs), x + pw / 2, y + 66, 13, C.dim, 'center', 600, true);
+    drawCoinIcon(x + pw / 2 - 42, y + 100, 11);
+    text('+' + fmtNum(m.coins), x + pw / 2 + 12, y + 100, 26, C.gold, 'center', 800, true);
+    text('离线收益 = (0.25 + 稻草人×0.55 + 鱼塘×0.9) × 洒水器 × 进度系数', x + pw / 2, y + 130, 9.5, C.dim, 'center', 600);
+    var bw = 150, bh = 38, bx = x + pw / 2 - bw / 2, by = y + ph - 58;
+    chamferPath(bx, by, bw, bh, 6);
+    ctx.fillStyle = alpha(C.gold, 0.2); ctx.fill();
+    ctx.strokeStyle = C.gold; ctx.lineWidth = 1.5; ctx.stroke();
+    text('领取收益', bx + bw / 2, by + bh / 2, 14, C.gold, 'center', 800);
+    hit('modal:ok', bx, by, bw, bh);
+  } else {
+    text('重新开始', x + pw / 2, y + 44, 19, C.text, 'center', 800);
+    text('将清空金币、等级、农田与设施进度', x + pw / 2, y + 82, 12, C.dim, 'center', 600);
+    text('此操作不可撤销', x + pw / 2, y + 106, 12, C.danger, 'center', 700);
+    var bw2 = 130, bh2 = 38, by2 = y + ph - 58;
+    chamferPath(x + 24, by2, bw2, bh2, 6);
+    ctx.fillStyle = '#12202f'; ctx.fill(); ctx.strokeStyle = C.line; ctx.lineWidth = 1.3; ctx.stroke();
+    text('取消', x + 24 + bw2 / 2, by2 + bh2 / 2, 13, C.dim, 'center', 700);
+    chamferPath(x + pw - 24 - bw2, by2, bw2, bh2, 6);
+    ctx.fillStyle = alpha(C.danger, 0.18); ctx.fill(); ctx.strokeStyle = C.danger; ctx.lineWidth = 1.5; ctx.stroke();
+    text('确认重开', x + pw - 24 - bw2 / 2, by2 + bh2 / 2, 13, C.danger, 'center', 800);
+    hit('modal:cancel', x + 24, by2, bw2, bh2);
+    hit('modal:reset', x + pw - 24 - bw2, by2, bw2, bh2);
+  }
+  ctx.restore();
+}
+function render(){
+  var W = view.w, H = view.h;
+  ctx.setTransform(view.dpr, 0, 0, view.dpr, 0, 0);
+  ctx.clearRect(0, 0, W, H);
+  lay.hits = [];
+  drawBackground();
+  shakeCur.x = shakeAmt * Math.sin(T * 47) * 0.6;
+  shakeCur.y = shakeAmt * Math.cos(T * 39) * 0.6;
+  ctx.save();
+  ctx.translate(num(shakeCur.x), num(shakeCur.y));
+  drawTopBar();
+  drawShop();
+  drawField();
+  drawFacilityBand();
+  drawSide();
+  drawHint();
+  ctx.restore();
+  drawEffects();
+  if (flashA > 0.001){
+    ctx.save(); ctx.globalAlpha = clamp(flashA, 0, 0.45);
+    ctx.fillStyle = flashCol; ctx.fillRect(0, 0, W, H); ctx.restore();
+  }
+  drawToast();
+  drawModal();
+  if (state.paused && !state.modal){
+    ctx.save();
+    ctx.fillStyle = 'rgba(7,9,15,0.45)'; ctx.fillRect(0, 0, W, H);
+    text('已暂停', W / 2, H / 2, 28, C.lime, 'center', 800);
+    text('点击「继续」恢复游戏', W / 2, H / 2 + 30, 12, C.dim, 'center', 600);
+    ctx.restore();
+  }
+}
+
+/* =========================================================================
+   模块 11 / 更新循环
+   ========================================================================= */
+function update(dt){
+  dt = clamp(dt, 0, 0.1);
+  if (state.paused){ updateEffects(dt); return; }
+  var N = state.size, i;
+  for (i = 0; i < state.tiles.length; i++){
+    var t = state.tiles[i];
+    if (!t || t.crop < 0) continue;
+    var ci = clamp(t.crop, 0, CROPS.length - 1);
+    var total = growTimeOf(ci);
+    if (t.growth >= total) continue;
+    var s0 = stageOf(t.growth, total);
+    t.growth = Math.min(total, t.growth + dt * (t.pest ? 0.25 : 1));
+    var s1 = stageOf(t.growth, total);
+    if (s1 > s0){
+      if (s1 < 3){
+        var chance = 0.08 * num(CATS[CROPS[ci].cat].pest, 1);
+        if (!t.pest && Math.random() < chance){
+          t.pest = true;
+          var pc = tileCenter(i % N, Math.floor(i / N));
+          addFloat(pc.x, pc.y - geomCache.tw * 0.3, '出现害虫!', C.danger, 12);
+          audio.sfx('pest');
+        }
+      } else {
+        var mc = tileCenter(i % N, Math.floor(i / N));
+        addFloat(mc.x, mc.y - geomCache.tw * 0.34, '成熟', CROPS[ci].col, 12);
+      }
+    }
+  }
+  if (state.fac[2] > 0){
+    state.timer.sc += dt;
+    if (state.timer.sc >= num(FAC[2].vals[state.fac[2] - 1], 4.5)){
+      state.timer.sc = 0;
+      var cand = [];
+      for (i = 0; i < state.tiles.length; i++){
+        var tt = state.tiles[i];
+        if (tt && tt.crop >= 0 && tt.growth >= growTimeOf(tt.crop)) cand.push(i);
+      }
+      if (cand.length){ harvest(cand[Math.floor(Math.random() * cand.length)], true); audio.sfx('coin'); }
+    }
+  }
+  if (state.fac[3] > 0){
+    state.timer.hive += dt;
+    if (state.timer.hive >= num(FAC[3].vals[state.fac[3] - 1], 12)){
+      state.timer.hive = 0;
+      var any = false;
+      for (i = 0; i < state.tiles.length; i++){
+        if (state.tiles[i] && state.tiles[i].pest){ state.tiles[i].pest = false; any = true; }
+      }
+      if (any){ showToast('蜂箱驱除了全部害虫', C.gold); audio.sfx('pest'); }
+    }
+  }
+  if (state.fac[4] > 0){
+    state.timer.pond += dt;
+    if (state.timer.pond >= num(FAC[4].ivals[state.fac[4] - 1], 6)){
+      state.timer.pond = 0;
+      var amt = num(FAC[4].vals[state.fac[4] - 1], 6);
+      state.coins += amt; state.total += amt;
+      audio.sfx('coin');
+    }
+  }
+  if (input.hold >= 0){
+    input.hold += dt;
+    if (input.hold > 0.34){
+      input.hold = 0.18;
+      var ti = screenToTile(input.x, input.y);
+      if (ti >= 0 && state.tiles[ti] && state.tiles[ti].crop < 0) plant(ti, true);
+    }
+  }
+  state.saveT += dt;
+  if (state.saveT > 8){ state.saveT = 0; saveGame(); }
+  updateEffects(dt);
+}
+
+/* =========================================================================
+   模块 12 / 输入
+   ========================================================================= */
+var input = { x: 0, y: 0, down: false, hold: -1 };
 function ptFromEvent(e){
-  const rect = canvas.getBoundingClientRect();
-  return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+  var r = canvas.getBoundingClientRect();
+  return { x: num(e.clientX, 0) - num(r.left), y: num(e.clientY, 0) - num(r.top) };
 }
-function hitUI(x,y){
-  for(let i=uiRects.length-1;i>=0;i--){
-    const r = uiRects[i];
-    if(x>=r.x && x<=r.x+r.w && y>=r.y && y<=r.y+r.h) return r.id;
+function pick(x, y){
+  x = num(x) - shakeCur.x; y = num(y) - shakeCur.y;
+  for (var i = lay.hits.length - 1; i >= 0; i--){
+    var h = lay.hits[i];
+    if (x >= h.x && x <= h.x + h.w && y >= h.y && y <= h.y + h.h) return h;
   }
   return null;
 }
-function doAction(id){
-  if(!id) return false;
-  if(id==='start'){ startGame(); return true; }
-  if(id.startsWith('crop')){ S.cropSel = parseInt(id.slice(4),10); sfx.click(); save(); return true; }
-  if(id==='buy_sprinkler'){ buyHelper('sprinkler'); return true; }
-  if(id==='buy_scarecrow'){ buyHelper('scarecrow'); return true; }
-  if(id==='expand'){ interact(-1); return true; }
-  if(id==='mute'){ S.muted = !S.muted; if(!S.muted) sfx.click(); save(); return true; }
-  if(id==='pause'){ if(S.screen==='playing'){ modal = (modal==='pause')?null:'pause'; sfx.click(); } return true; }
-  if(id==='resume'){ modal = null; sfx.click(); return true; }
-  if(id==='reset'){ modal = 'reset'; sfx.click(); return true; }
-  if(id==='cancelReset'){ modal = null; sfx.click(); return true; }
-  if(id==='confirmReset'){ resetGame(); return true; }
-  if(id==='upgrade'){ modal = 'upgrade'; sfx.click(); return true; }
-  if(id==='closeUpgrade'){ modal = null; sfx.click(); return true; }
-  if(id==='claimOffline'){
-    if(offline){ S.coins += offline.gain; S.total += offline.gain; if(S.total>S.best) S.best=S.total;
-      coinBurst(W/2, H*0.5, 22, W*0.86, 60); toast('离线收益已到账', CO.gold); sfx.level(); }
-    offline = null; modal = null; save(); return true;
+function onDown(e){
+  audio.unlock();
+  var p = ptFromEvent(e);
+  input.x = p.x; input.y = p.y; input.down = true; input.hold = -1;
+  var h = pick(p.x, p.y);
+  if (state.modal){
+    if (h && h.id === 'modal:ok'){
+      state.coins += num(state.modal.coins, 0);
+      state.total += num(state.modal.coins, 0);
+      state.modal = null;
+      audio.sfx('harvest');
+      flashA = 0.24; flashCol = C.gold;
+      saveGame();
+    } else if (h && h.id === 'modal:cancel'){ state.modal = null; audio.sfx('click'); }
+    else if (h && h.id === 'modal:reset'){ state.modal = null; resetGame(); showToast('已重新开始', C.lime); audio.sfx('level'); }
+    return;
   }
-  if(id==='act'){ interact(selIdx); return true; }
-  return false;
-}
-
-canvas.addEventListener('pointerdown', e=>{
-  initAudio();
-  const p = ptFromEvent(e);
-  pointer.down = true; pointer.x = p.x; pointer.y = p.y;
-  pointer.sx = p.x; pointer.sy = p.y; pointer.drag = false;
-  try{ canvas.setPointerCapture(e.pointerId); }catch(err){}
-});
-canvas.addEventListener('pointermove', e=>{
-  const p = ptFromEvent(e);
-  pointer.x = p.x; pointer.y = p.y;
-  if(pointer.down){
-    const dx = p.x - pointer.sx, dy = p.y - pointer.sy;
-    if(Math.abs(dx) > 22 || Math.abs(dy) > 22){
-      pointer.drag = true;
-      if(S.screen==='playing' && !modal && p.x < W*0.55){
-        const r = Math.floor(selIdx/6), c = selIdx%6;
-        if(Math.abs(dx) > Math.abs(dy)) selIdx = r*6 + clamp(c + (dx>0?1:-1), 0, S.gridN-1);
-        else selIdx = clamp(r + (dy>0?1:-1), 0, S.gridN-1)*6 + c;
-        clampSel();
-        sfx.click();
-        pointer.sx = p.x; pointer.sy = p.y;
-      }else{
-        pointer.sx = p.x; pointer.sy = p.y;
-      }
+  if (!h){
+    var ti = screenToTile(p.x, p.y);
+    if (ti >= 0){
+      tileClick(ti);
+      if (state.tiles[ti] && state.tiles[ti].crop < 0) input.hold = 0;
     }
-  }
-});
-canvas.addEventListener('pointerup', e=>{
-  const p = ptFromEvent(e);
-  pointer.down = false;
-  handleTap(p.x, p.y);
-});
-canvas.addEventListener('pointercancel', ()=>{ pointer.down = false; });
-canvas.addEventListener('contextmenu', e=>e.preventDefault());
-
-function handleTap(x,y){
-  initAudio();
-  const id = hitUI(x,y);
-  if(doAction(id)) return;
-
-  if(S.screen==='boot') return;
-  if(S.screen==='title'){ startGame(); return; }
-  if(modal) return;
-
-  const idx = plotAt(x,y);
-  if(idx!==null){
-    selIdx = idx;
-    interact(idx);
     return;
   }
-  // 左半屏点击：移动光标
-  if(x < W*0.5){
-    const cx = L.gx + L.side/2, cy = L.gy + L.side/2;
-    const r = Math.floor(selIdx/6), c = selIdx%6;
-    if(Math.abs(x-cx) > Math.abs(y-cy)) selIdx = r*6 + clamp(c + (x>cx?1:-1), 0, S.gridN-1);
-    else selIdx = clamp(r + (y>cy?1:-1), 0, S.gridN-1)*6 + c;
-    clampSel(); sfx.click();
-  }else{
-    interact(selIdx);
-  }
-}
-
-window.addEventListener('keydown', e=>{
-  initAudio();
-  const k = e.key.toLowerCase();
-  if(['arrowup','arrowdown','arrowleft','arrowright',' ','spacebar','enter'].includes(k)) e.preventDefault();
-
-  if(k==='m'){ S.muted = !S.muted; if(!S.muted) sfx.click(); save(); return; }
-
-  if(S.screen==='boot') return;
-  if(S.screen==='title'){
-    if(k===' '||k==='spacebar'||k==='enter') startGame();
-    return;
-  }
-  if(modal){
-    if(k==='escape'||k==='p'){
-      if(modal==='pause'){ modal = null; }
-      else if(modal==='upgrade'){ modal = null; }
-      else if(modal==='reset'){ modal = null; }
-      return;
+  var id = String(h.id);
+  if (id.indexOf('tile') === 0){ tileClick(h.data); return; }
+  if (id.indexOf('tab:') === 0){ state.cat = clamp(h.data, 0, 3); audio.sfx('click'); saveGame(); return; }
+  if (id.indexOf('crop:') === 0){
+    var ci = clamp(h.data, 0, CROPS.length - 1);
+    if (!isUnlocked(ci)){
+      showToast('未解锁：累计金币达到 ' + fmtNum(CROPS[ci].unlock) + ' 后开放', C.gold);
+      audio.sfx('error');
+    } else {
+      state.sel = ci; state.cat = CROPS[ci].cat;
+      showToast('已选择 ' + CROPS[ci].name, CATS[CROPS[ci].cat].color);
+      audio.sfx('click'); saveGame();
     }
-    if(modal==='offline' && (k===' '||k==='spacebar'||k==='enter')){ doAction('claimOffline'); return; }
     return;
   }
-
-  const r = Math.floor(selIdx/6), c = selIdx%6;
-  if(k==='arrowup'||k==='w'){ selIdx = clamp(r-1,0,S.gridN-1)*6 + c; clampSel(); sfx.click(); return; }
-  if(k==='arrowdown'||k==='s'){ selIdx = clamp(r+1,0,S.gridN-1)*6 + c; clampSel(); sfx.click(); return; }
-  if(k==='arrowleft'||k==='a'){ selIdx = r*6 + clamp(c-1,0,S.gridN-1); clampSel(); sfx.click(); return; }
-  if(k==='arrowright'||k==='d'){ selIdx = r*6 + clamp(c+1,0,S.gridN-1); clampSel(); sfx.click(); return; }
-  if(k===' '||k==='spacebar'||k==='enter'){ interact(selIdx); return; }
-  if(k>='1'&&k<='4'){ S.cropSel = parseInt(k,10)-1; sfx.click(); save(); return; }
-  if(k==='u'){ modal = (modal==='upgrade')?null:'upgrade'; sfx.click(); return; }
-  if(k==='e'){ doAction('expand'); return; }
-  if(k==='p'||k==='escape'){ modal = 'pause'; sfx.click(); return; }
-  if(k==='r'){ modal = 'reset'; sfx.click(); return; }
-});
-
-/* =========================================================
-   12. 生命周期
-   ========================================================= */
-function startGame(){
-  S.screen = 'playing';
-  modal = null;
-  sfx.click();
-  save();
-}
-function resetGame(){
-  const keepBest = Math.max(S.best, S.total);
-  const keepMuted = S.muted;
-  const fresh = defaults();
-  fresh.best = keepBest;
-  fresh.muted = keepMuted;
-  Object.assign(S, fresh);
-  offline = null;
-  modal = null;
-  S.screen = 'title';
-  parts.length = 0; floats.length = 0; rings.length = 0; toasts.length = 0;
-  EV.cloudActive = 0; EV.cloudT = rnd(38,58); EV.pestT = rnd(26,44);
-  toast('新农场已建立', CO.lime);
-  save();
-}
-
-window.addEventListener('pagehide', save);
-window.addEventListener('beforeunload', save);
-document.addEventListener('visibilitychange', ()=>{
-  if(document.hidden) save();
-  else if(AC && AC.state==='suspended') AC.resume();
-});
-
-/* =========================================================
-   13. 主循环（固定时间步长）
-   ========================================================= */
-const STEP = 1/60;
-let acc = 0, lastT = performance.now(), autosaveT = 0;
-
-function update(dt){
-  S.time += dt;
-
-  if(S.screen!=='playing' || modal){
-    updateFx(dt);
+  if (id.indexOf('fac:') === 0){ upgradeFacility(h.data); return; }
+  if (id === 'btn:0'){
+    audio.on = !audio.on;
+    if (audio.on){ audio.unlock(); audio.sfx('click'); }
+    showToast('声音已' + (audio.on ? '开启' : '关闭'), C.cyan);
+    saveGame();
     return;
   }
-
-  const spMult = HELPERS.sprinkler.mult[S.sprinkler];
-  const cloudMult = EV.cloudActive>0 ? 1.8 : 1;
-
-  for(let i=0;i<36;i++){
-    const r = Math.floor(i/6), c = i%6;
-    if(isLocked(r,c)) continue;
-    const p = S.plots[i];
-    if(p.crop===null || p.stage>=3) continue;
-    const crop = CROPS[p.crop];
-    const rate = (1/crop.grow) * spMult * cloudMult * (p.pest?0.78:1);
-    const before = p.progress;
-    p.progress += rate*dt;
-    if(p.progress>=1){
-      p.progress = 1; p.stage = 3;
-      const cc = cellCenter(i);
-      ringFx(cc.x, cc.y, CO.green, L.cell*0.9);
-      floatText(cc.x, cc.y - L.cell*0.4, '成熟!', CO.gold, 15);
-      tone(560,0.09,'triangle',0.16,820);
-    }else{
-      const st = p.progress<0.12 ? 0 : (p.progress<0.45 ? 1 : 2);
-      if(st !== p.stage && before>0){
-        p.stage = st;
-        const cc = cellCenter(i);
-        ringFx(cc.x, cc.y, CO.green, L.cell*0.55);
-      }
-    }
+  if (id === 'btn:1'){
+    state.paused = !state.paused;
+    audio.sfx('click');
+    showToast(state.paused ? '游戏已暂停' : '游戏继续', C.lime);
+    return;
   }
-
-  updateEvents(dt);
-  updateFx(dt);
-
-  autosaveT += dt;
-  if(autosaveT > 15){ autosaveT = 0; save(); }
+  if (id === 'btn:2'){
+    if (state.confirmReset > 0){ state.modal = { type: 'reset' }; state.confirmReset = 0; }
+    else { state.confirmReset = 4; showToast('再次点击「重开」以确认', C.danger); audio.sfx('click'); }
+    return;
+  }
+  if (id === 'btn:expand' || id === 'btn:expand2'){ expandFarm(); return; }
 }
+function onMove(e){
+  var p = ptFromEvent(e);
+  input.x = p.x; input.y = p.y;
+  var h = pick(p.x, p.y);
+  hoverId = h ? h.id : null;
+  hoverTile = (!h && !state.modal) ? screenToTile(p.x, p.y) : -1;
+}
+function onUp(){ input.down = false; input.hold = -1; }
+canvas.addEventListener('pointerdown', onDown);
+window.addEventListener('pointermove', onMove, { passive: true });
+window.addEventListener('pointerup', onUp);
+window.addEventListener('pointercancel', onUp);
+window.addEventListener('blur', onUp);
+canvas.addEventListener('contextmenu', function(e){ e.preventDefault(); });
+canvas.addEventListener('touchstart', function(e){ e.preventDefault(); }, { passive: false });
+document.addEventListener('visibilitychange', function(){ if (document.hidden) saveGame(); });
+window.addEventListener('pagehide', function(){ saveGame(); });
 
+/* =========================================================================
+   模块 13 / 主循环
+   ========================================================================= */
+var last = 0;
 function frame(now){
-  let dt = (now - lastT)/1000;
-  lastT = now;
-  if(dt > 0.25) dt = 0.25;
-  acc += dt;
-  let guard = 0;
-  while(acc >= STEP && guard < 12){
-    if(S.screen==='boot'){
-      bootT += STEP;
-      if(bootT > 1.7){ S.screen = 'title'; }
-      updateFx(STEP);
-      acc -= STEP;
-    }else{
-      update(STEP);
-      acc -= STEP;
-    }
-    guard++;
+  now = num(now, performance.now());
+  var dt = (now - last) / 1000;
+  last = now;
+  if (!isFinite(dt) || dt < 0) dt = 0;
+  dt = clamp(dt, 0, 0.1);
+  T += dt;
+  try{
+    update(dt);
+    render();
+  } catch (err){
+    if (window.console && console.warn) console.warn('frame error', err);
   }
-  render();
   requestAnimationFrame(frame);
 }
-
-/* =========================================================
-   14. 启动
-   ========================================================= */
-resize();
-const hadSave = load();
-S.screen = 'boot';
-bootT = 0;
-checkUnlocks();
-
-if(hadSave){
-  const off = offlineResult();
-  if(off && off.gain>0){
-    offline = off;
-    modal = 'offline';
+function boot(){
+  resize();
+  state.tiles = makeTiles(state.size);
+  var info = loadGame();
+  if (info && info.ts){
+    var elapsed = clamp((Date.now() - info.ts) / 1000, 0, 8 * 3600);
+    if (elapsed > 5){
+      for (var i = 0; i < state.tiles.length; i++){
+        var t = state.tiles[i];
+        if (t && t.crop >= 0) t.growth = Math.min(growTimeOf(t.crop), t.growth + elapsed * (t.pest ? 0.25 : 1));
+      }
+      var gain = offlineRate() * elapsed;
+      if (gain >= 1) state.modal = { type: 'offline', coins: Math.round(gain), secs: elapsed };
+      else if (elapsed > 30) showToast('欢迎回来 · 离线 ' + fmtTime(elapsed), C.cyan);
+    }
+  } else if (!info){
+    showToast('选择作物，点击空地开始播种', C.cyan);
   }
+  computeGeom();
+  requestAnimationFrame(function(n){ last = n; frame(n); });
 }
-save();
-requestAnimationFrame(frame);
-
-// 首次交互时解锁音频
-window.addEventListener('pointerdown', initAudio, { once:true });
-window.addEventListener('keydown', initAudio, { once:true });
-
-})();
+boot();
 </script>
 </body>
 </html>
