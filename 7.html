@@ -118,8 +118,8 @@
     <button class="btn" id="btn-help-back">返回</button>
   </div>
 
-  <!-- 奖励 / 奇遇 -->
-  <div id="modal">
+    <!-- 奖励 / 奇遇（默认隐藏，仅 openReward/openEvent 弹出） -->
+    <div id="modal" class="hidden">
     <div class="kicker" id="modal-kicker">WAVE REWARD</div>
     <div id="modal-title">—</div>
     <div id="modal-sub">—</div>
@@ -742,17 +742,54 @@ function getTowerPool(eraIndex, type){
   }
   return pool;
 }
+/* ============ 词条池（按时代 + 解锁过滤，抽取前过滤，绝不产生越代） ============ */
+function pickPool(pool){ return pool[Math.floor(Math.random()*pool.length)]; }
+
+function getElementPool(eraIndex){
+  var cur = clamp(eraIndex,0,4)+1, out=[], i, e;
+  for (i=0;i<ELEMENT.length;i++){
+    e = ELEMENT[i];
+    if (!e || (e.era||1) > cur) continue;              /* 时代过滤：圣光 era≥2、量子 era≥3 */
+    if (e.id && !idUnlocked('elem_'+e.id)) continue;   /* 解锁池过滤：腐蚀/圣光/量子需购买 */
+    out.push(i);
+  }
+  if (!out.length){                                    /* 兜底：不看解锁，只看时代 */
+    for (i=0;i<ELEMENT.length;i++){ e = ELEMENT[i]; if (e && (e.era||1) <= cur) out.push(i); }
+  }
+  return out.length ? out : [0];
+}
+
+function getSuffixPool(eraIndex){
+  var cur = clamp(eraIndex,0,4)+1, out=[], i, x;
+  for (i=0;i<SUFFIX.length;i++){
+    x = SUFFIX[i];
+    if (!x || (x.era||1) > cur) continue;              /* 寂灭 era≥4 */
+    if (x.id && !idUnlocked('suf_'+x.id)) continue;    /* 暴击/狂热需购买 */
+    out.push(i);
+  }
+  if (!out.length){
+    for (i=0;i<SUFFIX.length;i++){ x = SUFFIX[i]; if (x && (x.era||1) <= cur) out.push(i); }
+  }
+  return out.length ? out : [0];
+}
+
 function rollTowerParts(eraIndex, forceQ, forceE, forceS, forceK){
   var cur = clamp(eraIndex,0,4) + 1;
   for (var a=0; a<32; a++){
-    var pool = getTowerPool(eraIndex, null);
-    var k = (forceK != null && forceK !== undefined) ? forceK : pool[Math.floor(Math.random()*pool.length)];
+    /* 塔型：受已解锁池过滤（getTowerPool 内部含时代过滤） */
+    var k = (forceK != null && forceK !== undefined) ? forceK : pickPool(getTowerPool(eraIndex, null));
     if (!TOWER_KINDS[k]){ console.error('[affix] 塔型不存在，已重抽', k); continue; }
     if (TOWER_KINDS[k].era > cur){ console.error('[affix] 越代塔，已重抽：', TOWER_KINDS[k].id, TOWER_KINDS[k].era, '>', cur); continue; }
-    var e = (forceE != null && forceE !== undefined) ? forceE : pickW(ELEMENT);
-    if (!ELEMENT[e] || ELEMENT[e].era > cur){ console.error('[affix] 越代元素，已重抽：', ELEMENT[e] && ELEMENT[e].id); continue; }
-    var s = (forceS != null && forceS !== undefined) ? forceS : pickW(SUFFIX);
+
+    /* 元素：已在池内过滤，断言仅为安全网 */
+    var e = (forceE != null && forceE !== undefined) ? forceE : pickPool(getElementPool(eraIndex));
+    if (!ELEMENT[e] || (ELEMENT[e].era||1) > cur){ console.error('[affix] 越代元素，已重抽：', ELEMENT[e] && ELEMENT[e].id); continue; }
+
+    /* 后缀：同上 */
+    var s = (forceS != null && forceS !== undefined) ? forceS : pickPool(getSuffixPool(eraIndex));
     if (!SUFFIX[s] || (SUFFIX[s].era||1) > cur){ console.error('[affix] 越代后缀，已重抽：', SUFFIX[s] && SUFFIX[s].id); continue; }
+
+    /* 品质：按权重 16/10/6/2/0.5 抽取，不受时代限制 */
     var q = (forceQ != null && forceQ !== undefined) ? forceQ : pickW(QUALITY);
     return { k:k, q:clamp(q,0,QUALITY.length-1), e:e, s:s, level:1, star:1 };
   }
@@ -1217,7 +1254,7 @@ function openEvent(){
   $('modal-kicker').textContent = 'ENCOUNTER';
   $('modal-title').textContent = '奇遇事件';
   $('modal-sub').textContent = '第 ' + S.wave + ' 波 · 三选一';
-  S.merchantEl = pickW(ELEMENT);
+  S.merchantEl = pickPool(getElementPool(S.playerEra));   /* 商人词缀不越代 */
   var row = $('modal-row'); row.innerHTML = '';
   EVENTS.forEach(function(ev, i){
     var el = document.createElement('div');
@@ -1758,6 +1795,7 @@ function drawZones(){
 }
 
 function drawHUD(){
+  S.__hits = [];
   var E = ERAS[clamp(S.playerEra,0,4)];
   /* 顶栏 */
   ctx.fillStyle = 'rgba(10,14,20,0.80)'; ctx.fillRect(0,0,W,66);
@@ -1839,7 +1877,6 @@ function drawHUD(){
         ctx.fillStyle = '#FFE9D2'; ctx.font = '800 15px "PingFang SC",sans-serif'; ctx.textAlign = 'center';
         ctx.fillText(cd.toFixed(1)+'s', x+w/2, y+h/2+6); ctx.textAlign = 'left';
       }
-      S.__hits = S.__hits || [];
       S.__hits.push({ x:x, y:y, w:w, h:h, fn:function(){ trySpawn(role); } });
     })(i);
   }
@@ -2223,19 +2260,28 @@ function affixStressTest(times){
   console.log('%c[启动自检] affixStressTest ×'+(times+300)+'：'+(ok?('通过（最高时代 '+worst+'，原始 0 越代）'):'发现问题，见 error'), ok?'color:#5AD24A':'color:#FF5A5A');
   return ok;
 }
+/* ============ 17. 启动自检 ============ */
 function boot(){
   console.log('%c[火柴人·战争进化] 启动自检开始', 'color:#28C9D8;font-weight:700');
-  validateMetaTable();
-  towerPoolSelfTest();
-  affixStressTest(1000);
-  console.log('%c[启动自检] 完成：解锁项 '+META_SHOP.length+' 项 / 塔型 '+TOWER_KINDS.length+' 条 / 单位 '+
-    (ROLE_ORDER.length*5)+' 种 / 遗物 '+RELICS.length+' 件 · console 零 warn 零 error', 'color:#5AD24A');
-  buildDiffCards();
-  renderShop();
-  $('title-record').textContent = '最佳记录：第 ' + fmt(SAVE.best) + ' 波 · 累计进化点 ' + fmt(SAVE.evo);
+  try{ validateMetaTable(); }
+  catch(err){ console.warn('[自检] validateMetaTable 异常：', err); }
+  try{ towerPoolSelfTest(); }
+  catch(err){ console.warn('[自检] towerPoolSelfTest 异常：', err); }
+  try{ affixStressTest(1000); }
+  catch(err){ console.warn('[自检] affixStressTest 异常：', err); }
+  try{
+    buildDiffCards();
+    renderShop();
+    $('title-record').textContent = '最佳记录：第 ' + fmt(SAVE.best) + ' 波 · 累计进化点 ' + fmt(SAVE.evo);
+  }catch(err){ console.warn('[启动] 界面初始化异常：', err); }
   fit();
   requestAnimationFrame(loop);
 }
+
+window.addEventListener('resize', fit);
+document.addEventListener('visibilitychange', function(){
+  if (!document.hidden && S.mode === 'playing'){ S.last = performance.now(); }
+});
 boot();
 </script>
 </body>
