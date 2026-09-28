@@ -72,14 +72,14 @@ and open-standards based (Canvas 2D + Web Audio API).
 
 | 角标 | 游戏 Game | 分类 Genre | 一句话 Tagline | 评分 | 在线 Play |
 |:---:|---|---|---|:---:|---|
-| 🆕 | 星尘快跑 Stardust Rush | 街机 · 反应 | 星空穿梭接星币，连击冲最高分 | 9.4 | [打开](https://yaokx520.github.io/Just-play/stardust-rush/) |
-| 🔥 | 霓虹弹球 Neon Pinball | 弹幕 · 休闲 | 弹球反弹清霓虹砖，越弹越爽 | 8.8 | [打开](https://yaokx520.github.io/Just-play/neon-pinball/) |
-| | 像素深海 Pixel Abyss | 探索 · 解谜 | 深潜像素海底，解谜寻宝避水母 | 8.2 | [打开](https://yaokx520.github.io/Just-play/pixel-abyss/) |
-| | 方块农场 Block Farm | 模拟 · 放置 | 种菜收获，放置经营你的小农场 | 7.9 | [打开](https://yaokx520.github.io/Just-play/block-farm/) |
-| 🔥 | 星际塔防 Star Defense | 策略 · 塔防 | 布塔守星球，抵御外星虫群 | 9.1 | [打开](https://yaokx520.github.io/Just-play/star-defense/) |
-| | 熔岩跑酷 Lava Runner | 跑酷 · 极限 | 熔岩追身，越跑越快的极限闪避 | 8.5 | [打开](https://yaokx520.github.io/Just-play/lava-runner/) |
-| 🆕 | 战争进化史 Evo Wars | 策略 · 进化 | 五时代进化肉鸽塔防，随机词缀塔 | 9.2 | [打开](https://yaokx520.github.io/Just-play/evolution/) |
-| | 疯狂小人大战 Stickman Brawl | 格斗 · 对战 | 火柴人同屏乱斗，道具随机掉落 | 8.7 | [打开](https://yaokx520.github.io/Just-play/brawl/) |
+| 🆕 | 星尘快跑 Stardust Rush | 街机 · 反应 | 星空穿梭接星币，连击冲最高分 | 9.4 | [打开](https://yaokx520.github.io/Just-play/1.html) |
+| 🔥 | 霓虹弹球 Neon Pinball | 弹幕 · 休闲 | 弹球反弹清霓虹砖，越弹越爽 | 8.8 | [打开](https://yaokx520.github.io/Just-play/2.html) |
+| | 像素深海 Pixel Abyss | 探索 · 解谜 | 深潜像素海底，解谜寻宝避水母 | 8.2 | [打开](https://yaokx520.github.io/Just-play/3.html) |
+| | 方块农场 Block Farm | 模拟 · 放置 | 种菜收获，放置经营你的小农场 | 7.9 | [打开](https://yaokx520.github.io/Just-play/4.html) |
+| 🔥 | 星际塔防 Star Defense | 策略 · 塔防 | 布塔守星球，抵御外星虫群 | 9.1 | [打开](https://yaokx520.github.io/Just-play/5.html) |
+| | 熔岩跑酷 Lava Runner | 跑酷 · 极限 | 熔岩追身，越跑越快的极限闪避 | 8.5 | [打开](https://yaokx520.github.io/Just-play/6.html) |
+| 🆕 | 战争进化史 Evo Wars | 策略 · 进化 | 五时代进化肉鸽塔防，随机词缀塔 | 9.2 | [打开](https://yaokx520.github.io/Just-play/7.html) |
+| | 疯狂小人大战 Stickman Brawl | 格斗 · 对战 | 火柴人同屏乱斗，道具随机掉落 | 8.7 | [打开](https://yaokx520.github.io/Just-play/8.html) |
 
 > 评分为站内玩家综合评分（满分 10）；🆕 新游 / 🔥 热门。
 
