@@ -1,0 +1,1034 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FLASH ZONE - 星尘快跑</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Noto+Sans+SC:wght@400;500;700;900&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#12151c;
+  --bg2:#1b2130;
+  --panel:#202838;
+  --line:#0a0d14;
+  --ink:#e9e6dd;
+  --ink-dim:#9aa3b4;
+  --amber:#ff9d2e;
+  --amber-hi:#ffd27a;
+  --amber-lo:#c25e07;
+  --cyan:#37e0e8;
+  --red:#ff4d5e;
+  --pixel:'Press Start 2P','Noto Sans SC',monospace;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{
+  background:
+    radial-gradient(1100px 520px at 50% -120px,rgba(55,224,232,.13),transparent 70%),
+    radial-gradient(900px 500px at 90% 110%,rgba(255,157,46,.10),transparent 65%),
+    var(--bg);
+  color:var(--ink);
+  font-family:'Noto Sans SC',sans-serif;
+  line-height:1.7;
+  overflow-x:hidden;
+}
+img{max-width:100%}
+.wrap{width:min(1120px,92vw);margin:0 auto}
+
+/* ---------- 顶部玻璃导航（老式光泽条） ---------- */
+header{
+  position:sticky;top:0;z-index:50;
+  background:linear-gradient(180deg,#2a3purple 0%,#232c3e 100%);
+  background:linear-gradient(180deg,#2b3547 0%,#1c2432 100%);
+  border-bottom:3px solid var(--line);
+  box-shadow:0 10px 26px rgba(0,0,0,.5),inset 0 1px 0 rgba(255,255,255,.14);
+}
+.nav{display:flex;align-items:center;gap:22px;height:66px}
+.logo{display:flex;align-items:center;gap:10px;font-family:var(--pixel);font-size:15px;letter-spacing:1px;color:#fff;text-decoration:none}
+.logo .bolt{
+  width:34px;height:34px;display:grid;place-items:center;
+  background:linear-gradient(180deg,var(--amber-hi),var(--amber) 55%,var(--amber-lo));
+  border:2px solid var(--line);border-radius:8px;
+  box-shadow:0 3px 0 #7c4208,inset 0 1px 0 rgba(255,255,255,.6);
+  color:#2a1804;font-size:17px;
+}
+.logo b{color:var(--amber)}
+nav a{
+  color:var(--ink-dim);text-decoration:none;font-size:14px;font-weight:700;
+  padding:7px 12px;border-radius:6px;transition:.18s;
+}
+nav a:hover{color:#fff;background:rgba(55,224,232,.13)}
+.nav .spacer{flex:1}
+.nav .btn{padding:11px 18px;font-size:11px}
+
+/* ---------- 跑马灯 ---------- */
+.ticker{
+  background:var(--amber);
+  border-bottom:3px solid var(--line);
+  overflow:hidden;white-space:nowrap;
+}
+.ticker-track{display:inline-block;padding:7px 0;animation:slide 22s linear infinite}
+.ticker span{
+  font-family:var(--pixel);font-size:10px;color:#2b1804;letter-spacing:1px;
+  margin:0 26px;
+}
+@keyframes slide{from{transform:translateX(0)}to{transform:translateX(-50%)}}
+
+/* ---------- 立体按钮 ---------- */
+.btn{
+  font-family:var(--pixel);font-size:12px;letter-spacing:1px;
+  color:#2b1804;text-decoration:none;display:inline-block;
+  padding:15px 26px;border:2px solid var(--line);border-radius:9px;cursor:pointer;
+  background:linear-gradient(180deg,var(--amber-hi),var(--amber) 55%,var(--amber-lo));
+  box-shadow:0 5px 0 #8a4d0c,0 12px 22px rgba(0,0,0,.45),inset 0 1px 0 rgba(255,255,255,.65);
+  transition:transform .08s,box-shadow .08s,filter .18s;
+  user-select:none;
+}
+.btn:hover{filter:brightness(1.08)}
+.btn:active{transform:translateY(4px);box-shadow:0 1px 0 #8a4d0c,0 6px 14px rgba(0,0,0,.4),inset 0 1px 0 rgba(255,255,255,.5)}
+.btn.cyan{background:linear-gradient(180deg,#a9f6fa,var(--cyan) 55%,#159aa2);box-shadow:0 5px 0 #0d6a70,0 12px 22px rgba(0,0,0,.45),inset 0 1px 0 rgba(255,255,255,.65);color:#03292b}
+.btn.cyan:active{box-shadow:0 1px 0 #0d6a70,0 6px 14px rgba(0,0,0,.4)}
+.btn.ghost{background:linear-gradient(180deg,#39455c,#232c3c);color:var(--ink);box-shadow:0 5px 0 #12161f,0 12px 22px rgba(0,0,0,.4),inset 0 1px 0 rgba(255,255,255,.12)}
+.btn.ghost:active{box-shadow:0 1px 0 #12161f}
+
+/* ---------- Hero ---------- */
+.hero{padding:52px 0 22px;text-align:center}
+.badge{
+  display:inline-flex;align-items:center;gap:8px;
+  font-family:var(--pixel);font-size:9px;letter-spacing:1.5px;color:var(--cyan);
+  border:2px solid rgba(55,224,232,.4);background:rgba(55,224,232,.09);
+  padding:8px 14px;border-radius:999px;margin-bottom:22px;
+}
+.badge i{width:8px;height:8px;border-radius:50%;background:var(--cyan);box-shadow:0 0 10px var(--cyan);animation:blink 1.4s infinite}
+@keyframes blink{50%{opacity:.25}}
+h1{
+  font-family:var(--pixel);font-size:clamp(22px,4.4vw,44px);line-height:1.5;
+  color:#fff;text-shadow:0 4px 0 #12324a,0 8px 26px rgba(55,224,232,.35);
+}
+h1 em{font-style:normal;color:var(--amber);text-shadow:0 4px 0 #6b3604,0 8px 26px rgba(255,157,46,.4)}
+.hero p{max-width:620px;margin:18px auto 30px;color:var(--ink-dim);font-size:16px}
+
+/* ---------- Flash 播放器外框 ---------- */
+.player-shell{
+  position:relative;margin:14px auto 0;
+  background:linear-gradient(180deg,#2e3purple,#252e3f);
+  background:linear-gradient(180deg,#2f3a4d,#222a39);
+  border:3px solid var(--line);border-radius:14px;
+  padding:12px;
+  box-shadow:0 26px 60px rgba(0,0,0,.55),inset 0 1px 0 rgba(255,255,255,.16);
+}
+.player-bar{
+  display:flex;align-items:center;gap:12px;padding:2px 6px 12px;
+  font-family:var(--pixel);font-size:9px;color:var(--ink-dim);letter-spacing:1px;
+}
+.player-bar .dots{display:flex;gap:6px}
+.player-bar .dots i{width:11px;height:11px;border-radius:50%;border:2px solid var(--line)}
+.player-bar .dots i:nth-child(1){background:#ff5f57}
+.player-bar .dots i:nth-child(2){background:#febc2e}
+.player-bar .dots i:nth-child(3){background:#28c840}
+.player-bar .grow{flex:1}
+
+.canvas-frame{
+  position:relative;border:3px solid var(--line);border-radius:9px;overflow:hidden;
+  background:#070a12;
+  box-shadow:inset 0 0 60px rgba(0,0,0,.8);
+}
+canvas{display:block;width:100%;height:auto;touch-action:none}
+.scan{
+  position:absolute;inset:0;pointer-events:none;
+  background:repeating-linear-gradient(0deg,rgba(0,0,0,.16) 0 1px,transparent 1px 3px);
+  mix-blend-mode:overlay;
+}
+.glow-frame{
+  position:absolute;inset:0;pointer-events:none;
+  box-shadow:inset 0 0 90px rgba(55,224,232,.14),inset 0 0 22px rgba(0,0,0,.6);
+  border-radius:6px;
+}
+
+/* HUD */
+.hud{
+  position:absolute;top:0;left:0;right:0;display:flex;gap:10px;flex-wrap:wrap;
+  padding:12px 14px;pointer-events:none;
+}
+.hud .chip{
+  pointer-events:auto;
+  background:rgba(10,14,22,.72);border:2px solid rgba(255,255,255,.12);
+  border-radius:8px;padding:7px 12px;min-width:92px;
+  font-family:var(--pixel);font-size:9px;letter-spacing:1px;color:var(--ink-dim);
+}
+.hud .chip b{display:block;font-size:15px;color:#fff;margin-top:5px}
+.hud .chip.combo b{color:var(--amber)}
+.hud .chip.lives b{color:var(--red);letter-spacing:3px}
+.hud .right{margin-left:auto;display:flex;gap:8px;pointer-events:auto}
+
+.icon-btn{
+  width:38px;height:38px;border-radius:8px;cursor:pointer;
+  border:2px solid var(--line);background:linear-gradient(180deg,#3b465c,#232c3c);
+  color:var(--ink);font-size:14px;box-shadow:0 3px 0 #12161f;transition:.1s;
+}
+.icon-btn:hover{filter:brightness(1.15)}
+.icon-btn:active{transform:translateY(2px);box-shadow:0 1px 0 #12161f}
+
+/* 覆盖层 */
+.overlay{
+  position:absolute;inset:0;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;gap:18px;text-align:center;
+  background:rgba(6,9,16,.82);backdrop-filter:blur(3px);
+}
+.overlay.hide{display:none}
+.overlay h2{font-family:var(--pixel);font-size:clamp(18px,3.4vw,30px);color:var(--amber);text-shadow:0 4px 0 #6b3604}
+.overlay p{color:var(--ink-dim);font-size:14px;max-width:440px}
+.overlay .keys{display:flex;gap:10px;flex-wrap:wrap;justify-content:center}
+.key{
+  font-family:var(--pixel);font-size:10px;color:var(--ink);
+  border:2px solid var(--line);border-radius:7px;padding:9px 13px;
+  background:linear-gradient(180deg,#3b465c,#242d3e);box-shadow:0 3px 0 #12161f;
+}
+.final{font-family:var(--pixel);font-size:13px;color:#fff;line-height:2.2}
+.final span{color:var(--cyan)}
+
+/* ---------- 分节 ---------- */
+section{padding:64px 0}
+.sec-head{display:flex;align-items:flex-end;gap:18px;margin-bottom:30px;flex-wrap:wrap}
+.sec-head h2{font-family:var(--pixel);font-size:clamp(17px,2.8vw,25px);color:#fff}
+.sec-head h2::before{content:"//";color:var(--amber);margin-right:12px}
+.sec-head p{color:var(--ink-dim);font-size:14px;flex:1;min-width:220px}
+
+/* 说明卡片 */
+.grid3{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:18px}
+.card{
+  position:relative;background:var(--panel);
+  border:2px solid var(--line);border-radius:13px;padding:24px 22px 26px;
+  box-shadow:0 14px 32px rgba(0,0,0,.36),inset 0 1px 0 rgba(255,255,255,.09);
+  transition:transform .22s ease,box-shadow .22s ease;
+}
+.card:hover{transform:translateY(-6px);box-shadow:0 22px 44px rgba(0,0,0,.5),inset 0 1px 0 rgba(255,255,255,.12)}
+.card .num{
+  font-family:var(--pixel);font-size:11px;color:var(--amber);
+  display:inline-block;padding:6px 11px;border-radius:7px;margin-bottom:14px;
+  background:rgba(255,157,46,.12);border:2px solid rgba(255,157,46,.35);
+}
+.card h3{font-size:18px;color:#fff;margin-bottom:9px}
+.card p{color:var(--ink-dim);font-size:14px}
+.card .screw{position:absolute;width:8px;height:8px;border-radius:50%;background:#0e131d;box-shadow:inset 0 1px 2px rgba(255,255,255,.25)}
+.card .screw.tl{top:9px;left:9px}.card .screw.tr{top:9px;right:9px}
+.card .screw.bl{bottom:9px;left:9px}.card .screw.br{bottom:9px;right:9px}
+
+/* 游戏卡片网格 */
+.games{display:grid;grid-template-columns:repeat(auto-fill,minmax(228px,1fr));gap:20px}
+.gcard{
+  border:2px solid var(--line);border-radius:12px;overflow:hidden;background:var(--bg2);
+  box-shadow:0 14px 30px rgba(0,0,0,.38);transition:.22s;cursor:pointer;
+}
+.gcard:hover{transform:translateY(-6px) rotate(-.6deg);box-shadow:0 22px 44px rgba(0,0,0,.5)}
+.thumb{position:relative;height:132px;display:grid;place-items:center;overflow:hidden}
+.thumb .tag{
+  position:absolute;top:9px;left:9px;font-family:var(--pixel);font-size:8px;
+  background:var(--red);color:#fff;padding:5px 9px;border-radius:5px;letter-spacing:1px;
+  box-shadow:0 3px 0 rgba(0,0,0,.35);
+}
+.thumb .tag.new{background:var(--cyan);color:#04282b}
+.thumb .art{font-size:52px;filter:drop-shadow(0 8px 14px rgba(0,0,0,.45))}
+.t1{background:linear-gradient(140deg,#3d2a6b,#8b2fb0 55%,#ff7ac2)}
+.t2{background:linear-gradient(140deg,#0d4f66,#12a2c4 55%,#8ef2ff)}
+.t3{background:linear-gradient(140deg,#6b2208,#e0641c 55%,#ffd27a)}
+.t4{background:linear-gradient(140deg,#123a20,#2aa555 55%,#b6f77a)}
+.t5{background:linear-gradient(140deg,#3b3b52,#7a46c9 55%,#37e0e8)}
+.t6{background:linear-gradient(140deg,#4d1224,#c2244a 55%,#ff9d2e)}
+.gcard .meta{padding:14px 15px 17px}
+.gcard h4{font-size:15px;color:#fff;margin-bottom:4px}
+.gcard .sub{display:flex;align-items:center;justify-content:space-between;font-size:12px;color:var(--ink-dim)}
+.gcard .rate{font-family:var(--pixel);font-size:10px;color:var(--amber)}
+.bar{height:6px;border-radius:99px;background:#0e131d;overflow:hidden;margin-top:11px}
+.bar i{display:block;height:100%;background:linear-gradient(90deg,var(--amber),var(--cyan))}
+
+/* 数据条 */
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:16px;margin-top:8px}
+.stat{
+  text-align:center;padding:24px 14px;border:2px solid var(--line);border-radius:12px;
+  background:linear-gradient(180deg,#232c3c,#1a2130);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.1),0 12px 26px rgba(0,0,0,.3);
+}
+.stat b{display:block;font-family:var(--pixel);font-size:23px;color:var(--cyan);margin-bottom:9px}
+.stat span{font-size:13px;color:var(--ink-dim)}
+
+/* FAQ */
+.faq details{
+  border:2px solid var(--line);border-radius:11px;background:var(--bg2);
+  padding:0 20px;margin-bottom:12px;box-shadow:0 10px 24px rgba(0,0,0,.3);
+}
+.faq summary{
+  cursor:pointer;list-style:none;padding:19px 0;font-weight:700;font-size:15.5px;color:#fff;
+  display:flex;justify-content:space-between;align-items:center;gap:14px;
+}
+.faq summary::after{content:"+";font-family:var(--pixel);color:var(--amber);font-size:15px}
+.faq details[open] summary::after{content:"-"}
+.faq p{padding:0 0 20px;color:var(--ink-dim);font-size:14.5px}
+
+/* CTA */
+.cta{
+  text-align:center;padding:56px 26px;border-radius:18px;
+  border:3px solid var(--line);
+  background:
+    radial-gradient(700px 300px at 50% 0%,rgba(255,157,46,.2),transparent 70%),
+    linear-gradient(180deg,#2b3purple,#1a2130);
+  background-color:#222b3b;
+  box-shadow:0 26px 60px rgba(0,0,0,.5),inset 0 1px 0 rgba(255,255,255,.12);
+}
+.cta h2{font-family:var(--pixel);font-size:clamp(18px,3vw,28px);color:#fff;margin-bottom:14px}
+.cta p{color:var(--ink-dim);max-width:520px;margin:0 auto 28px}
+
+/* 页脚 */
+footer{border-top:3px solid var(--line);background:#0d111a;padding:44px 0 30px;margin-top:20px}
+.foot{display:flex;justify-content:space-between;gap:26px;flex-wrap:wrap}
+.foot h5{font-family:var(--pixel);font-size:10px;color:var(--amber);letter-spacing:1px;margin-bottom:14px}
+.foot a{display:block;color:var(--ink-dim);text-decoration:none;font-size:13.5px;padding:4px 0;transition:.15s}
+.foot a:hover{color:var(--cyan)}
+.copy{margin-top:32px;padding-top:20px;border-top:1px solid rgba(255,255,255,.08);color:#5d6activate;color:#5d6779;font-size:12.5px;display:flex;justify-content:space-between;gap:14px;flex-wrap:wrap}
+.copy .pixel{font-family:var(--pixel);font-size:8px;letter-spacing:1px}
+
+@media(max-width:720px){
+  .nav a.hide-m{display:none}
+  .hero{padding-top:34px}
+  .hud .chip{min-width:74px;padding:6px 9px}
+  .hud .chip b{font-size:12px}
+}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap nav">
+    <a class="logo" href="#"><span class="bolt">&#9889;</span>FLASH<b>ZONE</b></a>
+    <nav>
+      <a href="#play">开始游戏</a>
+      <a class="hide-m" href="#how">玩法</a>
+      <a class="hide-m" href="#games">游戏库</a>
+      <a href="#faq">帮助</a>
+    </nav>
+    <div class="spacer"></div>
+    <a class="btn" href="#play">立即开玩</a>
+  </div>
+</header>
+
+<div class="ticker">
+  <div class="ticker-track" id="tickTrack">
+    <span>&#9733; NEW: 星尘快跑 v1.2 上线</span>
+    <span>&#9889; 全屏模式已支持触屏</span>
+    <span>&#9733; 今日挑战: 达到 3000 分解锁黄金星币</span>
+    <span>&#9889; 每周更新 · 免费畅玩</span>
+    <span>&#9733; NEW: 星尘快跑 v1.2 上线</span>
+    <span>&#9889; 全屏模式已支持触屏</span>
+    <span>&#9733; 今日挑战: 达到 3000 分解锁黄金星币</span>
+    <span>&#9889; 每周更新 · 免费畅玩</span>
+  </div>
+</div>
+
+<!-- ================= HERO / 游戏 ================= -->
+<main>
+<section class="hero" id="play">
+  <div class="wrap">
+    <div class="badge"><i></i>HTML5 ARCADE · 无需插件 · 打开即玩</div>
+    <h1>接住星币<br><em>躲开故障炸弹</em></h1>
+    <p>致敬 2004 年的 Flash 小游戏黄金年代。键盘或触屏操控你的收集艇，连续接取触发倍率加成，撑得越久，星空越快。</p>
+
+    <div class="player-shell">
+      <div class="player-bar">
+        <div class="dots"><i></i><i></i><i></i></div>
+        <span>stardust_rush.swf &#8212; 已用 HTML5 重制</span>
+        <div class="grow"></div>
+        <span id="fpsTag">60 FPS</span>
+      </div>
+
+      <div class="canvas-frame">
+        <canvas id="game" width="720" height="405"></canvas>
+        <div class="scan"></div>
+        <div class="glow-frame"></div>
+
+        <div class="hud">
+          <div class="chip">SCORE<b id="uiScore">0</b></div>
+          <div class="chip">BEST<b id="uiBest">0</b></div>
+          <div class="chip combo">COMBO<b id="uiCombo">x1</b></div>
+          <div class="chip lives">LIVES<b id="uiLives">&#9829;&#9829;&#9829;</b></div>
+          <div class="right">
+            <button class="icon-btn" id="btnSound" title="声音开关">&#128266;</button>
+            <button class="icon-btn" id="btnPause" title="暂停/继续">&#10073;&#10073;</button>
+          </div>
+        </div>
+
+        <!-- 开始界面 -->
+        <div class="overlay" id="ovStart">
+          <h2>STARDUST RUSH</h2>
+          <p>接星币 &amp; 宝石，躲红色故障炸弹。连续接取提升倍率，漏接会清空连击。</p>
+          <div class="keys">
+            <div class="key">&#8592; &#8594; / A D</div>
+            <div class="key">鼠标 / 触屏拖动</div>
+            <div class="key">P 暂停</div>
+          </div>
+          <button class="btn" id="btnStart">▶ 开始游戏</button>
+        </div>
+
+        <!-- 暂停 -->
+        <div class="overlay hide" id="ovPause">
+          <h2>PAUSED</h2>
+          <p>星空为你停留。</p>
+          <button class="btn cyan" id="btnResume">继续</button>
+        </div>
+
+        <!-- 结束 -->
+        <div class="overlay hide" id="ovOver">
+          <h2>GAME OVER</h2>
+          <div class="final">
+            最终得分 <span id="ovScore">0</span><br>
+            历史最高 <span id="ovBest">0</span>
+          </div>
+          <button class="btn" id="btnRetry">↻ 再来一局</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= 玩法 ================= -->
+<section id="how">
+  <div class="wrap">
+    <div class="sec-head">
+      <h2>三分钟上手</h2>
+      <p>规则比说明书还短，但高分没那么容易。</p>
+    </div>
+    <div class="grid3">
+      <div class="card">
+        <span class="screw tl"></span><span class="screw tr"></span><span class="screw bl"></span><span class="screw br"></span>
+        <div class="num">STEP 01</div>
+        <h3>移动收集艇</h3>
+        <p>方向键 / A D，或者直接用鼠标、手指拖动。收集艇只有 90 像素宽，预判落点比手速更重要。</p>
+      </div>
+      <div class="card">
+        <span class="screw tl"></span><span class="screw tr"></span><span class="screw bl"></span><span class="screw br"></span>
+        <div class="num">STEP 02</div>
+        <h3>吃星币，攒连击</h3>
+        <p>星币 +10，宝石 +25。每连续接取 5 个提升一级倍率，最高 ×5。漏接任意物品或被炸到都会清零连击。</p>
+      </div>
+      <div class="card">
+        <span class="screw tl"></span><span class="screw tr"></span><span class="screw bl"></span><span class="screw br"></span>
+        <div class="num">STEP 03</div>
+        <h3>躲炸弹，抓红心</h3>
+        <p>红色故障炸弹会扣一条命并触发 1 秒无敌闪烁；稀有的红心可以回血，最多 5 条命。每 300 分提速一档。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= 游戏库 ================= -->
+<section id="games">
+  <div class="wrap">
+    <div class="sec-head">
+      <h2>游戏库</h2>
+      <p>同一套复古街机审美，六款风格演示位（本页仅《星尘快跑》为可玩成品）。</p>
+    </div>
+    <div class="games">
+      <div class="gcard" onclick="document.getElementById('play').scrollIntoView()">
+        <div class="thumb t3"><div class="tag new">NEW</div><div class="art">&#11088;</div></div>
+        <div class="meta">
+          <h4>星尘快跑</h4>
+          <div class="sub"><span>街机 · 反应</span><span class="rate">9.4</span></div>
+          <div class="bar"><i style="width:94%"></i></div>
+        </div>
+      </div>
+      <div class="gcard">
+        <div class="thumb t1"><div class="tag">HOT</div><div class="art">&#127922;</div></div>
+        <div class="meta">
+          <h4>霓虹弹球</h4>
+          <div class="sub"><span>弹幕 · 休闲</span><span class="rate">8.8</span></div>
+          <div class="bar"><i style="width:88%"></i></div>
+        </div>
+      </div>
+      <div class="gcard">
+        <div class="thumb t2"><div class="art">&#128031;</div></div>
+        <div class="meta">
+          <h4>像素深海</h4>
+          <div class="sub"><span>探险 · 解谜</span><span class="rate">8.2</span></div>
+          <div class="bar"><i style="width:82%"></i></div>
+        </div>
+      </div>
+      <div class="gcard">
+        <div class="thumb t4"><div class="art">&#127807;</div></div>
+        <div class="meta">
+          <h4>方块农场</h4>
+          <div class="sub"><span>模拟 · 放置</span><span class="rate">7.9</span></div>
+          <div class="bar"><i style="width:79%"></i></div>
+        </div>
+      </div>
+      <div class="gcard">
+        <div class="thumb t5"><div class="tag">HOT</div><div class="art">&#128640;</div></div>
+        <div class="meta">
+          <h4>星际塔防</h4>
+          <div class="sub"><span>策略 · 塔防</span><span class="rate">9.1</span></div>
+          <div class="bar"><i style="width:91%"></i></div>
+        </div>
+      </div>
+      <div class="gcard">
+        <div class="thumb t6"><div class="art">&#9876;&#65039;</div></div>
+        <div class="meta">
+          <h4>熔岩跑酷</h4>
+          <div class="sub"><span>跑酷 · 极限</span><span class="rate">8.5</span></div>
+          <div class="bar"><i style="width:85%"></i></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= 数据 ================= -->
+<section style="padding-top:0">
+  <div class="wrap">
+    <div class="stats">
+      <div class="stat"><b>60</b><span>稳定帧率</span></div>
+      <div class="stat"><b>0</b><span>插件依赖</span></div>
+      <div class="stat"><b>6</b><span>风格游戏位</span></div>
+      <div class="stat"><b>&#8734;</b><span>免费重开局数</span></div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= FAQ ================= -->
+<section id="faq" style="padding-top:20px">
+  <div class="wrap">
+    <div class="sec-head">
+      <h2>常见问题</h2>
+      <p>关于 Flash 的前世今生，以及本页的一些技术细节。</p>
+    </div>
+    <div class="faq">
+      <details open>
+        <summary>为什么不用真的 Flash 播放器？</summary>
+        <p>Adobe 已于 2020 年 12 月 31 日终止 Flash Player 支持，主流浏览器也彻底移除了相关 API。继续依赖 swf 文件既无法运行也有安全风险。本页用 Canvas 与 Web Audio 复刻了 Flash 游戏的视觉语言与手感，但底层是现代开放标准。</p>
+      </details>
+      <details>
+        <summary>游戏进度和最高分会保存吗？</summary>
+        <p>会。最高分通过浏览器 localStorage 保存在你自己的设备上，清空浏览器数据会一并清除。游戏本身不需要注册、不收集任何信息。</p>
+      </details>
+      <details>
+        <summary>手机上能玩吗？</summary>
+        <p>可以。画布会自适应屏幕宽度，支持手指拖动操作；页面布局在小屏下会自动折叠为单列。建议横屏体验更佳。</p>
+      </details>
+      <details>
+        <summary>声音能关掉吗？</summary>
+        <p>可以，点击游戏画面右上角的喇叭图标即可静音，音效由 Web Audio 实时合成，不加载任何音频文件。</p>
+      </details>
+    </div>
+  </div>
+</section>
+
+<!-- ================= CTA ================= -->
+<section style="padding-top:12px">
+  <div class="wrap">
+    <div class="cta">
+      <h2>准备好挑战 3000 分了吗？</h2>
+      <p>刷新页面不会丢掉你的最高分。拉上朋友比一比，看谁能在第六档速度里撑更久。</p>
+      <a class="btn cyan" href="#play">▲ 回到游戏</a>
+    </div>
+  </div>
+</section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <div class="foot">
+      <div style="max-width:280px">
+        <a class="logo" href="#" style="margin-bottom:14px"><span class="bolt">&#9889;</span>FLASH<b>ZONE</b></a>
+        <p style="color:#5d6779;font-size:13px">一个用现代 Web 技术重制的复古小游戏站。所有游戏逻辑运行在你的浏览器本地。</p>
+      </div>
+      <div>
+        <h5>游戏</h5>
+        <a href="#play">星尘快跑</a>
+        <a href="#games">霓虹弹球</a>
+        <a href="#games">星际塔防</a>
+      </div>
+      <div>
+        <h5>支持</h5>
+        <a href="#faq">常见问题</a>
+        <a href="#how">操作说明</a>
+        <a href="#play">意见反馈</a>
+      </div>
+      <div>
+        <h5>关于</h5>
+        <a href="#">技术栈</a>
+        <a href="#">隐私说明</a>
+        <a href="#">联系我们</a>
+      </div>
+    </div>
+    <div class="copy">
+      <span class="pixel">© 2026 FLASH ZONE · HTML5 ARCADE</span>
+      <span>本页面为设计演示作品，仅供学习交流。</span>
+    </div>
+  </div>
+</footer>
+
+<script>
+(function(){
+  "use strict";
+
+  /* ================= 音频 ================= */
+  let actx = null, muted = false;
+  function beep(freq, dur, type, vol){
+    if(muted) return;
+    try{
+      if(!actx) actx = new (window.AudioContext||window.webkitAudioContext)();
+      if(actx.state === "suspended") actx.resume();
+      const o = actx.createOscillator(), g = actx.createGain();
+      o.type = type || "square";
+      o.frequency.setValueAtTime(freq, actx.currentTime);
+      g.gain.setValueAtTime(vol || 0.05, actx.currentTime);
+      g.gain.exponentialRampToValueAtTime(0.0001, actx.currentTime + dur);
+      o.connect(g); g.connect(actx.destination);
+      o.start(); o.stop(actx.currentTime + dur);
+    }catch(e){}
+  }
+
+  /* ================= 画布与状态 ================= */
+  const canvas = document.getElementById("game");
+  const ctx = canvas.getContext("2d");
+  const W = canvas.width, H = canvas.height;
+
+  const uiScore = document.getElementById("uiScore");
+  const uiBest  = document.getElementById("uiBest");
+  const uiCombo = document.getElementById("uiCombo");
+  const uiLives = document.getElementById("uiLives");
+  const ovStart = document.getElementById("ovStart");
+  const ovPause = document.getElementById("ovPause");
+  const ovOver  = document.getElementById("ovOver");
+
+  let state = "ready";           // ready | playing | paused | over
+  let score = 0, best = 0, lives = 3, combo = 0;
+  try{ best = parseInt(localStorage.getItem("fz_best") || "0", 10) || 0; }catch(e){ best = 0; }
+
+  const player = { x: W/2, y: H - 52, w: 96, h: 20, speed: 8.2, tilt: 0 };
+  let items = [], particles = [], floaters = [];
+  let stars = [];
+  let spawnTimer = 0, shake = 0, invuln = 0, flash = 0;
+  let level = 1, lastT = 0, fpsAcc = 0, fpsCount = 0;
+
+  for(let i = 0; i < 80; i++){
+    stars.push({
+      x: Math.random()*W, y: Math.random()*H,
+      s: Math.random()*1.9 + 0.5, v: Math.random()*0.9 + 0.25,
+      a: Math.random()*0.6 + 0.25
+    });
+  }
+
+  /* ================= 工具 ================= */
+  const rand = (a, b) => a + Math.random()*(b - a);
+
+  function burst(x, y, color, n, power){
+    for(let i = 0; i < n; i++){
+      const ang = Math.random()*Math.PI*2, sp = rand(1.2, power || 5);
+      particles.push({
+        x:x, y:y, vx:Math.cos(ang)*sp, vy:Math.sin(ang)*sp,
+        life:1, decay:rand(0.018, 0.042), size:rand(2, 5.2), color:color
+      });
+    }
+  }
+
+  function addFloater(x, y, text, color){
+    floaters.push({ x:x, y:y, text:text, color:color, life:1, vy:-1.25 });
+  }
+
+  /* ================= 生成物品 ================= */
+  function spawn(){
+    const r = Math.random();
+    let type, size;
+    if(r < 0.60){ type = "star"; size = 17; }
+    else if(r < 0.85){ type = "gem"; size = 15; }
+    else if(r < 0.955){ type = "bomb"; size = 17; }
+    else { type = "heart"; size = 15; }
+
+    items.push({
+      type: type,
+      x: rand(36, W - 36),
+      y: -30,
+      size: size,
+      vy: rand(2.0, 3.2) + level*0.42,
+      rot: Math.random()*Math.PI*2,
+      spin: rand(-0.055, 0.055)
+    });
+  }
+
+  /* ================= 输入 ================= */
+  const keys = { left:false, right:false };
+  window.addEventListener("keydown", e => {
+    const k = e.key.toLowerCase();
+    if(k === "arrowleft" || k === "a"){ keys.left = true; e.preventDefault(); }
+    if(k === "arrowright" || k === "d"){ keys.right = true; e.preventDefault(); }
+    if(k === "p" || k === " "){ togglePause(); e.preventDefault(); }
+    if(k === "enter" && (state === "ready" || state === "over")) startGame();
+  });
+  window.addEventListener("keyup", e => {
+    const k = e.key.toLowerCase();
+    if(k === "arrowleft" || k === "a") keys.left = false;
+    if(k === "arrowright" || k === "d") keys.right = false;
+  });
+
+  function pointerMove(e){
+    if(state !== "playing") return;
+    const rect = canvas.getBoundingClientRect();
+    const cx = (e.touches ? e.touches[0].clientX : e.clientX) - rect.left;
+    player.x = cx * (W / rect.width);
+  }
+  canvas.addEventListener("mousemove", pointerMove);
+  canvas.addEventListener("touchmove", e => { pointerMove(e); e.preventDefault(); }, { passive:false });
+
+  /* ================= 状态切换 ================= */
+  function show(el){ el.classList.remove("hide"); }
+  function hide(el){ el.classList.add("hide"); }
+
+  function startGame(){
+    score = 0; lives = 3; combo = 0; level = 1;
+    items = []; particles = []; floaters = [];
+    player.x = W/2; invuln = 0; shake = 0; flash = 0; spawnTimer = 0;
+    hide(ovStart); hide(ovOver); hide(ovPause);
+    state = "playing";
+    beep(660, 0.09, "square", 0.05);
+    setTimeout(() => beep(880, 0.12, "square", 0.05), 95);
+  }
+
+  function gameOver(){
+    state = "over";
+    if(score > best){
+      best = score;
+      try{ localStorage.setItem("fz_best", String(best)); }catch(e){}
+    }
+    document.getElementById("ovScore").textContent = score;
+    document.getElementById("ovBest").textContent = best;
+    show(ovOver);
+    beep(320, 0.16, "sawtooth", 0.055);
+    setTimeout(() => beep(190, 0.34, "sawtooth", 0.055), 150);
+  }
+
+  function togglePause(){
+    if(state === "playing"){ state = "paused"; show(ovPause); }
+    else if(state === "paused"){ state = "playing"; hide(ovPause); lastT = 0; }
+  }
+
+  document.getElementById("btnStart").addEventListener("click", startGame);
+  document.getElementById("btnRetry").addEventListener("click", startGame);
+  document.getElementById("btnResume").addEventListener("click", togglePause);
+  document.getElementById("btnPause").addEventListener("click", togglePause);
+
+  const btnSound = document.getElementById("btnSound");
+  btnSound.addEventListener("click", () => {
+    muted = !muted;
+    btnSound.innerHTML = muted ? "&#128263;" : "&#128266;";
+    if(!muted) beep(720, 0.08, "triangle", 0.05);
+  });
+
+  document.addEventListener("visibilitychange", () => {
+    if(document.hidden && state === "playing") togglePause();
+  });
+
+  /* ================= 更新 ================= */
+  function update(dt){
+    // 背景星空
+    for(const s of stars){
+      s.y += s.v * (state === "playing" ? 1.35 : 0.55);
+      if(s.y > H){ s.y = -3; s.x = Math.random()*W; }
+    }
+
+    if(state !== "playing"){
+      if(shake > 0) shake *= 0.88;
+      return;
+    }
+
+    // 玩家移动
+    if(keys.left)  player.x -= player.speed * dt;
+    if(keys.right) player.x += player.speed * dt;
+    player.x = Math.max(player.w/2 + 6, Math.min(W - player.w/2 - 6, player.x));
+    player.tilt += ((keys.left ? -0.22 : keys.right ? 0.22 : 0) - player.tilt) * 0.14;
+
+    // 无敌时间
+    if(invuln > 0) invuln -= dt/60;
+    if(flash > 0) flash -= dt/60;
+    if(shake > 0) shake *= 0.9;
+
+    // 生成
+    level = 1 + Math.floor(score / 300);
+    spawnTimer -= dt;
+    if(spawnTimer <= 0){
+      spawn();
+      spawnTimer = Math.max(11, 34 - level*2.4) * rand(0.72, 1.28);
+    }
+
+    // 物品
+    for(let i = items.length - 1; i >= 0; i--){
+      const it = items[i];
+      it.y += it.vy * dt;
+      it.rot += it.spin * dt;
+
+      const hit = it.y + it.size > player.y - 4 &&
+                  it.y - it.size < player.y + player.h &&
+                  it.x > player.x - player.w/2 - 4 &&
+                  it.x < player.x + player.w/2 + 4;
+
+      if(hit){
+        if(it.type === "bomb"){
+          if(invuln <= 0){
+            lives--; combo = 0; invuln = 1.05; flash = 0.34; shake = 15;
+            burst(it.x, it.y, "#ff4d5e", 26, 7);
+            addFloater(it.x, it.y - 12, "HIT!", "#ff4d5e");
+            beep(140, 0.22, "sawtooth", 0.07);
+            items.splice(i, 1);
+            if(lives <= 0){ gameOver(); return; }
+          }
+          continue;
+        }
+
+        combo++;
+        const mult = Math.min(5, 1 + Math.floor(combo / 5));
+        if(it.type === "star"){
+          score += 10 * mult;
+          burst(it.x, it.y, "#ffd27a", 13, 4.6);
+          addFloater(it.x, it.y, "+" + (10*mult), "#ffd27a");
+          beep(620 + mult*70, 0.075, "square", 0.045);
+        }else if(it.type === "gem"){
+          score += 25 * mult;
+          burst(it.x, it.y, "#37e0e8", 16, 5.2);
+          addFloater(it.x, it.y, "+" + (25*mult), "#37e0e8");
+          beep(820 + mult*80, 0.1, "triangle", 0.05);
+        }else{ // heart
+          lives = Math.min(5, lives + 1);
+          burst(it.x, it.y, "#ff4d5e", 18, 5);
+          addFloater(it.x, it.y, "+1 UP", "#ff8b96");
+          beep(520, 0.1, "sine", 0.06);
+          setTimeout(() => beep(760, 0.14, "sine", 0.05), 90);
+        }
+        items.splice(i, 1);
+        continue;
+      }
+
+      // 出界
+      if(it.y - it.size > H + 14){
+        if(it.type !== "bomb" && it.type !== "heart") combo = 0;
+        items.splice(i, 1);
+      }
+    }
+
+    // 粒子
+    for(let i = particles.length - 1; i >= 0; i--){
+      const p = particles[i];
+      p.x += p.vx * dt; p.y += p.vy * dt;
+      p.vy += 0.055 * dt;
+      p.life -= p.decay * dt;
+      if(p.life <= 0) particles.splice(i, 1);
+    }
+
+    // 浮字
+    for(let i = floaters.length - 1; i >= 0; i--){
+      const f = floaters[i];
+      f.y += f.vy * dt;
+      f.life -= 0.017 * dt;
+      if(f.life <= 0) floaters.splice(i, 1);
+    }
+
+    // HUD
+    uiScore.textContent = score;
+    uiBest.textContent = best;
+    uiCombo.textContent = "x" + Math.min(5, 1 + Math.floor(combo / 5));
+    uiLives.textContent = lives > 0 ? "♥".repeat(lives) : "-";
+  }
+
+  /* ================= 绘制 ================= */
+  function star5(x, y, r, rot, color){
+    ctx.save();
+    ctx.translate(x, y); ctx.rotate(rot);
+    ctx.beginPath();
+    for(let i = 0; i < 10; i++){
+      const rad = i % 2 === 0 ? r : r * 0.45;
+      const ang = -Math.PI/2 + i * Math.PI/5;
+      ctx.lineTo(Math.cos(ang)*rad, Math.sin(ang)*rad);
+    }
+    ctx.closePath();
+    ctx.fillStyle = color; ctx.fill();
+    ctx.restore();
+  }
+
+  function draw(){
+    ctx.save();
+    if(shake > 0.4){
+      ctx.translate(rand(-shake, shake), rand(-shake, shake));
+    }
+
+    // 背景
+    const g = ctx.createLinearGradient(0, 0, 0, H);
+    g.addColorStop(0, "#0b1226");
+    g.addColorStop(0.55, "#101c39");
+    g.addColorStop(1, "#1b1230");
+    ctx.fillStyle = g;
+    ctx.fillRect(-30, -30, W + 60, H + 60);
+
+    // 星云
+    const neb = ctx.createRadialGradient(W*0.22, H*0.3, 10, W*0.22, H*0.3, 320);
+    neb.addColorStop(0, "rgba(55,224,232,0.13)");
+    neb.addColorStop(1, "rgba(55,224,232,0)");
+    ctx.fillStyle = neb; ctx.fillRect(0, 0, W, H);
+    const neb2 = ctx.createRadialGradient(W*0.82, H*0.72, 10, W*0.82, H*0.72, 300);
+    neb2.addColorStop(0, "rgba(255,157,46,0.12)");
+    neb2.addColorStop(1, "rgba(255,157,46,0)");
+    ctx.fillStyle = neb2; ctx.fillRect(0, 0, W, H);
+
+    // 星空
+    for(const s of stars){
+      ctx.globalAlpha = s.a;
+      ctx.fillStyle = s.s > 1.6 ? "#bfefff" : "#ffffff";
+      ctx.fillRect(s.x, s.y, s.s, s.s);
+    }
+    ctx.globalAlpha = 1;
+
+    // 物品
+    for(const it of items){
+      ctx.save();
+      ctx.translate(it.x, it.y);
+      if(it.type === "star"){
+        ctx.shadowColor = "#ffd27a"; ctx.shadowBlur = 18;
+        star5(0, 0, it.size, it.rot, "#ffd27a");
+        ctx.shadowBlur = 0;
+        star5(0, 0, it.size*0.55, it.rot, "#fff3d6");
+      }else if(it.type === "gem"){
+        ctx.rotate(it.rot*0.6);
+        ctx.shadowColor = "#37e0e8"; ctx.shadowBlur = 18;
+        ctx.beginPath();
+        ctx.moveTo(0, -it.size*1.25);
+        ctx.lineTo(it.size*0.95, 0);
+        ctx.lineTo(0, it.size*1.25);
+        ctx.lineTo(-it.size*0.95, 0);
+        ctx.closePath();
+        ctx.fillStyle = "#37e0e8"; ctx.fill();
+        ctx.shadowBlur = 0;
+        ctx.beginPath();
+        ctx.moveTo(0, -it.size*1.25);
+        ctx.lineTo(it.size*0.42, 0);
+        ctx.lineTo(0, it.size*1.25);
+        ctx.closePath();
+        ctx.fillStyle = "rgba(255,255,255,0.55)"; ctx.fill();
+      }else if(it.type === "bomb"){
+        ctx.shadowColor = "#ff4d5e"; ctx.shadowBlur = 16;
+        ctx.beginPath(); ctx.arc(0, 0, it.size, 0, Math.PI*2);
+        ctx.fillStyle = "#3b1220"; ctx.fill();
+        ctx.lineWidth = 3; ctx.strokeStyle = "#ff4d5e"; ctx.stroke();
+        ctx.shadowBlur = 0;
+        ctx.fillStyle = "#ff4d5e";
+        ctx.fillRect(-it.size*0.42, -2.6, it.size*0.84, 5.2);
+        ctx.fillRect(-2.6, -it.size*0.42, 5.2, it.size*0.84);
+        ctx.save();
+        ctx.rotate(it.rot);
+        ctx.fillStyle = "#ffb347";
+        ctx.beginPath(); ctx.arc(0, -it.size - 6, 3.6, 0, Math.PI*2); ctx.fill();
+        ctx.restore();
+      }else{
+        ctx.shadowColor = "#ff4d5e"; ctx.shadowBlur = 16;
+        ctx.fillStyle = "#ff5566";
+        ctx.beginPath();
+        ctx.moveTo(0, it.size*1.15);
+        ctx.bezierCurveTo(-it.size*1.5, 0, -it.size*0.62, -it.size*1.15, 0, -it.size*0.35);
+        ctx.bezierCurveTo(it.size*0.62, -it.size*1.15, it.size*1.5, 0, 0, it.size*1.15);
+        ctx.fill();
+        ctx.shadowBlur = 0;
+      }
+      ctx.restore();
+    }
+
+    // 玩家收集艇
+    if(!(invuln > 0 && Math.floor(invuln * 12) % 2 === 0)){
+      ctx.save();
+      ctx.translate(player.x, player.y);
+      ctx.rotate(player.tilt);
+
+      // 尾焰
+      const flame = 12 + Math.random()*9;
+      const fg = ctx.createLinearGradient(0, player.h/2, 0, player.h/2 + flame);
+      fg.addColorStop(0, "rgba(55,224,232,0.9)");
+      fg.addColorStop(1, "rgba(55,224,232,0)");
+      ctx.fillStyle = fg;
+      ctx.beginPath();
+      ctx.moveTo(-player.w*0.30, player.h/2);
+      ctx.lineTo(player.w*0.30, player.h/2);
+      ctx.lineTo(0, player.h/2 + flame*1.5);
+      ctx.closePath(); ctx.fill();
+
+      // 船体
+      ctx.shadowColor = "#37e0e8"; ctx.shadowBlur = 20;
+      const pg = ctx.createLinearGradient(0, -player.h/2, 0, player.h/2);
+      pg.addColorStop(0, "#eafcff");
+      pg.addColorStop(0.5, "#37e0e8");
+      pg.addColorStop(1, "#0e7d85");
+      ctx.fillStyle = pg;
+      ctx.beginPath();
+      const w = player.w/2, h = player.h/2;
+      ctx.moveTo(-w, h);
+      ctx.lineTo(-w*0.68, -h);
+      ctx.lineTo(w*0.68, -h);
+      ctx.lineTo(w, h);
+      ctx.quadraticCurveTo(0, h*1.9, -w, h);
+      ctx.closePath(); ctx.fill();
+      ctx.shadowBlur = 0;
+
+      // 座舱
+      ctx.fillStyle = "rgba(255,255,255,0.85)";
+      ctx.beginPath();
+      ctx.ellipse(0, -h*0.12, player.w*0.16, h*0.42, 0, 0, Math.PI*2);
+      ctx.fill();
+      ctx.restore();
+    }
+
+    // 粒子
+    for(const p of particles){
+      ctx.globalAlpha = Math.max(0, p.life);
+      ctx.fillStyle = p.color;
+      ctx.fillRect(p.x - p.size/2, p.y - p.size/2, p.size, p.size);
+    }
+    ctx.globalAlpha = 1;
+
+    // 浮字
+    ctx.textAlign = "center";
+    ctx.font = "14px 'Press Start 2P', monospace";
+    for(const f of floaters){
+      ctx.globalAlpha = Math.max(0, f.life);
+      ctx.fillStyle = f.color;
+      ctx.fillText(f.text, f.x, f.y);
+    }
+    ctx.globalAlpha = 1;
+
+    // 受伤红闪
+    if(flash > 0){
+      ctx.fillStyle = "rgba(255,45,66," + (flash * 0.55) + ")";
+      ctx.fillRect(-30, -30, W + 60, H + 60);
+    }
+
+    ctx.restore();
+  }
+
+  /* ================= 主循环 ================= */
+  function loop(t){
+    if(!lastT) lastT = t;
+    let dt = (t - lastT) / 16.6667;
+    lastT = t;
+    if(dt > 3) dt = 3;
+
+    fpsAcc += t; fpsCount++;
+    if(fpsCount >= 30){
+      document.getElementById("fpsTag").textContent =
+        Math.round(1000 / Math.max(1, (t - (loop.prev || t - 500)) / 30)) + " FPS";
+      loop.prev = t; fpsAcc = 0; fpsCount = 0;
+    }
+
+    update(dt);
+    draw();
+    requestAnimationFrame(loop);
+  }
+
+  uiBest.textContent = best;
+  requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
